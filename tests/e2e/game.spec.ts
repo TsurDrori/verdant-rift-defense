@@ -684,6 +684,19 @@ test('renderer disposal returns near baseline after flying-enemy and tower/defen
     snapshot.enemies.forEach((enemy) => { enemy.alive = false; });
   });
   await expect.poll(async () => (await diagnostics()).enemyViews).toBe(0);
+  await page.evaluate(() => {
+    const simulation = window.__VERDANT_RIFT__!.simulation as unknown as {
+      enemies: unknown[];
+      spawnQueue: unknown[];
+      waveActive: boolean;
+    };
+    // The synthetic wisp cohort has completed its renderer-cleanup check. Drop
+    // it from authoritative state before the independent tower churn phase so
+    // stale combat presentation cannot repopulate views between assertions.
+    simulation.enemies = [];
+    simulation.spawnQueue = [];
+    simulation.waveActive = false;
+  });
   await expect.poll(async () => {
     const current = await diagnostics();
     return current.tweens <= baseline.tweens + 2
