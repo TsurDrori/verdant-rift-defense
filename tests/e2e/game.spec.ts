@@ -640,6 +640,17 @@ test('renderer disposal returns near baseline after flying-enemy and tower/defen
   await page.goto('/');
   await page.getByRole('button', { name: /ENTER THE RIFT/ }).click();
   await page.waitForTimeout(500);
+  await page.evaluate(() => {
+    const scene = window.__VERDANT_RIFT_GAME__!.scene.getScene('battle') as unknown as {
+      tweens: { timeScale: number };
+      time: { timeScale: number };
+    };
+    // This is a lifecycle stress test, not an animation-duration test. Advance
+    // renderer-owned exits quickly so cleanup assertions do not depend on the
+    // host's GPU/frame cadence; every resource count is still checked exactly.
+    scene.tweens.timeScale = 8;
+    scene.time.timeScale = 8;
+  });
 
   const diagnostics = () => page.evaluate(() => {
     const scene = window.__VERDANT_RIFT_GAME__!.scene.getScene('battle') as unknown as {
