@@ -124,5 +124,8 @@ describe('Warden hero-management balance telemetry', () => {
     expect(split.phase).toBe('victory');
     expect(split.lives).toBeGreaterThanOrEqual(reserve.lives + 2);
     expect(reserve.lives).toBeLessThan(20);
-  }, 20_000);
+  // This executes three complete deterministic campaign simulations. It takes
+  // ~9 s on a local ARM machine and ~26 s on GitHub's shared Linux runner; the
+  // assertions validate simulation output, so CPU speed must not fail the gate.
+  }, 60_000);
 });

@@ -9,7 +9,10 @@ export default defineConfig({
   // contend for the same virtual CPU. CI shards across separate machines and
   // keeps one game page active per runner.
   workers: process.env.CI ? 1 : 3,
-  timeout: 45_000,
+  // Headless Chromium on GitHub's software-rendered Linux VM is ~4× slower
+  // than local GPU-backed runs at 1920×1080. Keep the strict local budget, but
+  // let hosted layout/playfield assertions finish rather than timing out mid-read.
+  timeout: process.env.CI ? 120_000 : 45_000,
   use: {
     baseURL: 'http://127.0.0.1:4173',
     viewport: { width: 1440, height: 900 },
