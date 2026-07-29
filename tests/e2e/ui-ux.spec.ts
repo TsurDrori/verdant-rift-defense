@@ -9,7 +9,12 @@ const viewports = [
 ] as const;
 
 async function expectReadableType(page: Page, selector: string, minimum: number): Promise<void> {
-  const result = await page.locator(selector).first().evaluate((element, min) => {
+  const locator = page.locator(selector).first();
+  // Structural UI renders can attach text one frame before layout. Playwright's
+  // visibility assertion waits for a non-zero box, then the measurements below
+  // still enforce the real typography/clipping contract.
+  await expect(locator).toBeVisible();
+  const result = await locator.evaluate((element, min) => {
     const style = getComputedStyle(element);
     const bounds = element.getBoundingClientRect();
     return {

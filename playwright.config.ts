@@ -5,7 +5,10 @@ export default defineConfig({
   // Phaser/WebAudio pages are GPU- and decoder-heavy. Capping concurrency
   // keeps viewport measurements deterministic instead of starving five
   // simultaneous game instances on typical laptops and hosted CI runners.
-  workers: process.env.CI ? 2 : 3,
+  // Hosted runners are substantially slower once two Phaser/WebAudio pages
+  // contend for the same virtual CPU. CI shards across separate machines and
+  // keeps one game page active per runner.
+  workers: process.env.CI ? 1 : 3,
   timeout: 45_000,
   use: {
     baseURL: 'http://127.0.0.1:4173',
