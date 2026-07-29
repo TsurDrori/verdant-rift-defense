@@ -1,0 +1,57 @@
+# Verdant Rift Defense
+
+A complete top-down fantasy tower-defense vertical slice built with Phaser 3, TypeScript, Vite, deterministic fixed-step simulation, DOM battle UI, and original generated art.
+
+## Play
+
+[Play Verdant Rift Defense](https://tsurdrori.github.io/verdant-rift-defense/)
+
+The `master` branch is the release branch. Every push to `master` runs the deterministic test suite, creates a production build, and publishes that exact revision to GitHub Pages through `.github/workflows/pages.yml`.
+
+## Run
+
+```bash
+pnpm install
+pnpm dev
+```
+
+Open `http://localhost:4173`.
+
+## Controls
+
+- Mouse/touch: select foundations, build, upgrade, specialize, command heroes
+- `Q` / `E`: cycle foundations
+- `Z` / `X`: select Kael / Lyra
+- `WASD`: move the selected hero
+- `1` / `2`: smart-cast hero commands at the frontline
+- `Space`: call the next wave
+- `F`: toggle 1× / 2× speed
+- `Esc`: pause and open sound/contrast/motion settings
+
+## Included
+
+- 12 overlapping waves, five enemy archetypes, three difficulties, proportional star scoring
+- Four tower families with three ranks and two mechanically distinct final branches each
+- Armor/resistance, flying coverage, burn, slow, mark, expose, splash, chain, aura, and targeting priorities
+- Two directly commandable heroes with distinct attacks and ultimates
+- Multi-phase boss with escort thresholds, readable ROOTFALL telegraph, tower disable/recovery, and dedicated boss UI
+- First-clear Insight reward, three-node pre-stage loadout, and free respec
+- Capped early-call economy with hero-command recharge
+- Fixed 60 Hz deterministic simulation and impact-synchronized health, bounty, audio, defeat, and victory presentation
+- Responsive landscape/portrait behavior, keyboard play, reduced motion, contrast mode, pause-on-hidden, and persistent sound settings
+
+## Verification
+
+```bash
+pnpm build
+pnpm test
+pnpm test:e2e
+pnpm capture:review
+```
+
+Design and acceptance references live in [`docs/`](./docs/):
+
+- `PROGRESSION_DESIGN.md`
+- `ART_DIRECTION.md`
+- `QA_ACCEPTANCE.md`
+- `ASSET_MANIFEST.md`

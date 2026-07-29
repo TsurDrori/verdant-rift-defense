@@ -1,0 +1,29 @@
+{
+  "name": "verdant-rift-defense",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc -b && vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "capture:review": "node scripts/capture-review.mjs",
+    "capture:branches": "node scripts/capture-branches.mjs",
+    "capture:melee": "node scripts/capture-melee.mjs",
+    "capture:pad0": "node scripts/capture-pad0.mjs",
+    "capture:audio": "node scripts/capture-audio.mjs",
+    "capture:responsive": "node scripts/capture-responsive.mjs",
+    "preview": "vite preview --host 0.0.0.0"
+  },
+  "dependencies": {
+    "phaser": "^3.90.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.1",
+    "typescript": "^5.8.3",
+    "vite": "^7.0.4",
+    "vitest": "^3.2.4"
+  }
+}
