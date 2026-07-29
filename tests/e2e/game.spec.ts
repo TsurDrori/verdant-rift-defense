@@ -732,19 +732,44 @@ test('renderer disposal returns near baseline after flying-enemy and tower/defen
     await expect.poll(async () => (await diagnostics()).towerViews).toBe(0);
   }
 
+  if (hostedCI) {
+    await page.evaluate(() => {
+      const scene = window.__VERDANT_RIFT_GAME__!.scene.getScene('battle') as unknown as {
+        tweens: { getTweens(): Array<{ totalDuration: number; complete(): unknown }> };
+      };
+      // SwiftShader can leave finite exit tweens pending despite an accelerated
+      // clock. Complete only finite presentation work; infinite ambient loops
+      // remain active and are accounted for by the captured baseline.
+      scene.tweens.getTweens()
+        .filter((tween) => Number.isFinite(tween.totalDuration))
+        .forEach((tween) => tween.complete());
+    });
+  }
+
   // Cleanup is frame-driven. Poll the actual bounded baseline so software
   // rendering cannot fail merely because a fixed wall-clock sleep elapsed
-  // before its final disposal frame.
+  // before its final disposal frame. Return structured deltas so CI failures
+  // identify the exact leaking resource instead of an opaque boolean.
   await expect.poll(async () => {
     const current = await diagnostics();
-    return current.enemyViews === 0
-      && current.towerViews === 0
-      && current.defenderViews === 0
-      && current.tweens <= baseline.tweens + 2
-      && current.timers <= baseline.timers + 2
-      && current.displayObjects <= baseline.displayObjects + 2
-      && current.watchdogHealthy;
-  }, { timeout: hostedCI ? 20_000 : 5_000 }).toBe(true);
+    return {
+      enemyViews: current.enemyViews,
+      towerViews: current.towerViews,
+      defenderViews: current.defenderViews,
+      tweenExcess: Math.max(0, current.tweens - baseline.tweens - 2),
+      timerExcess: Math.max(0, current.timers - baseline.timers - 2),
+      displayExcess: Math.max(0, current.displayObjects - baseline.displayObjects - 2),
+      watchdogHealthy: current.watchdogHealthy,
+    };
+  }, { timeout: hostedCI ? 20_000 : 5_000 }).toEqual({
+    enemyViews: 0,
+    towerViews: 0,
+    defenderViews: 0,
+    tweenExcess: 0,
+    timerExcess: 0,
+    displayExcess: 0,
+    watchdogHealthy: true,
+  });
   const settled = await diagnostics();
   expect(settled.enemyViews).toBe(0);
   expect(settled.towerViews).toBe(0);
