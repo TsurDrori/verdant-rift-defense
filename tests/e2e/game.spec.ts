@@ -673,7 +673,11 @@ test('renderer disposal returns near baseline after flying-enemy and tower/defen
     snapshot.enemies.forEach((enemy) => { enemy.alive = false; });
   });
   await expect.poll(async () => (await diagnostics()).enemyViews).toBe(0);
-  await page.waitForTimeout(700);
+  await expect.poll(async () => {
+    const current = await diagnostics();
+    return current.tweens <= baseline.tweens + 2
+      && current.timers <= baseline.timers + 2;
+  }, { timeout: hostedCI ? 20_000 : 5_000 }).toBe(true);
   const afterWisps = await diagnostics();
   expect(afterWisps.tweens).toBeLessThanOrEqual(baseline.tweens + 2);
   expect(afterWisps.timers).toBeLessThanOrEqual(baseline.timers + 2);
