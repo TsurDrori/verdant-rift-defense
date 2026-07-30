@@ -666,7 +666,7 @@ test('renderer disposal returns near baseline after flying-enemy and tower/defen
     };
     return scene.getPerformanceDiagnostics();
   });
-  const baseline = await diagnostics();
+  let baseline = await diagnostics();
 
   await page.evaluate(() => {
     const controller = window.__VERDANT_RIFT__!;
@@ -705,6 +705,22 @@ test('renderer disposal returns near baseline after flying-enemy and tower/defen
   const afterWisps = await diagnostics();
   expect(afterWisps.tweens).toBeLessThanOrEqual(baseline.tweens + 2);
   expect(afterWisps.timers).toBeLessThanOrEqual(baseline.timers + 2);
+
+  // The flying-enemy lifecycle has now independently returned to baseline.
+  // Start tower/defender churn on a fresh scene so delayed combat presentation
+  // from the synthetic wisp cohort cannot contaminate the second subsystem.
+  await page.goto('/');
+  await page.getByRole('button', { name: /ENTER THE RIFT/ }).click();
+  await page.waitForTimeout(500);
+  await page.evaluate(() => {
+    const scene = window.__VERDANT_RIFT_GAME__!.scene.getScene('battle') as unknown as {
+      tweens: { timeScale: number };
+      time: { timeScale: number };
+    };
+    scene.tweens.timeScale = 8;
+    scene.time.timeScale = 8;
+  });
+  baseline = await diagnostics();
 
   for (let cycle = 0; cycle < 30; cycle += 1) {
     await page.evaluate((iteration) => {
