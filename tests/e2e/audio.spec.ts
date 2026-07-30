@@ -172,7 +172,10 @@ test('phase-transfers compound cues and debounces rapid pressure flaps without r
   expect(boundaryQueued.mode).toBe('calm');
   expect(boundaryQueued.transport.pending?.cue).toBe('calm-loop');
   expect(boundaryQueued.transport.pending?.in).toBeGreaterThan(0);
-  expect(boundaryQueued.transport.pending?.in).toBeLessThanOrEqual(60 / 82 / 2 * 16 + .15);
+  // A boundary less than 350 ms away is deliberately skipped so a 1.15 s
+  // crossfade is not launched almost immediately. The longest valid wait is
+  // therefore one 16-step grid plus that exact safety window.
+  expect(boundaryQueued.transport.pending?.in).toBeLessThanOrEqual(60 / 82 / 2 * 16 + .35);
   expect(boundaryQueued.transport.midPhraseRestarts).toBe(0);
 
   await page.evaluate(() => {
