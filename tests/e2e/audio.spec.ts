@@ -140,7 +140,7 @@ test('phase-transfers compound cues and debounces rapid pressure flaps without r
   expect(stable.transport.modeChanges).toBe(1);
   expect(stable.transport.midPhraseRestarts).toBe(0);
 
-  await page.evaluate(() => {
+  const boundaryQueued = await page.evaluate(() => {
     const controller = window.__VERDANT_RIFT__!;
     const simulation = controller.simulation as unknown as {
       enemies: unknown[];
@@ -154,20 +154,26 @@ test('phase-transfers compound cues and debounces rapid pressure flaps without r
     simulation.waveActive = false;
     simulation.nextWaveReady = true;
     simulation.intermission = 999;
-    controller.update(0);
     const director = window.__VERDANT_RIFT_AUDIO__ as unknown as {
       context: AudioContext;
-      modeGate: { candidate: string; candidateSince: number };
+      modeGate: { modeSince: number; candidate: string; candidateSince: number };
+      diagnostics(): ReturnType<NonNullable<typeof window.__VERDANT_RIFT_AUDIO__>['diagnostics']>;
     };
+    director.modeGate.modeSince = director.context.currentTime - 10.1;
     director.modeGate.candidate = 'calm';
     director.modeGate.candidateSince = director.context.currentTime - 10.1;
+    // The state event synchronously advances the gate and queues the safe
+    // boundary. Capture that transient contract in this same browser task: a
+    // software-rendered CI host may legitimately cross the boundary before a
+    // second Playwright round-trip, at which point `pending` is already gone.
+    controller.update(0);
+    return director.diagnostics();
   });
-  await expect.poll(() => page.evaluate(() => window.__VERDANT_RIFT_AUDIO__!.diagnostics().mode)).toBe('calm');
-  const boundaryQueued = await page.evaluate(() => window.__VERDANT_RIFT_AUDIO__!.diagnostics().transport);
-  expect(boundaryQueued.pending?.cue).toBe('calm-loop');
-  expect(boundaryQueued.pending?.in).toBeGreaterThan(0);
-  expect(boundaryQueued.pending?.in).toBeLessThanOrEqual(60 / 82 / 2 * 16 + .15);
-  expect(boundaryQueued.midPhraseRestarts).toBe(0);
+  expect(boundaryQueued.mode).toBe('calm');
+  expect(boundaryQueued.transport.pending?.cue).toBe('calm-loop');
+  expect(boundaryQueued.transport.pending?.in).toBeGreaterThan(0);
+  expect(boundaryQueued.transport.pending?.in).toBeLessThanOrEqual(60 / 82 / 2 * 16 + .15);
+  expect(boundaryQueued.transport.midPhraseRestarts).toBe(0);
 
   await page.evaluate(() => {
     const director = window.__VERDANT_RIFT_AUDIO__ as unknown as {
