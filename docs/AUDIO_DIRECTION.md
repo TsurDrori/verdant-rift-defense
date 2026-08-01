@@ -8,37 +8,29 @@ low organic mass of the Hollow Bloom. It should feel authored and emotionally
 legible without copying the orchestral-comic language of another tower-defense
 series.
 
-The build is a hybrid of a real recorded/rendered CC0 score and CC0 sampled
+The build is a hybrid of a real recorded/rendered CC BY 4.0 score and CC0 sampled
 material effects. Small procedural layers reinforce crisis pulse, sub weight,
 air, and spatial cohesion; they never carry the melody or replace an authored
 effect. No MIDI or General MIDI playback ships.
 
 ## Adaptive score
 
-- Tempo reference: 82 BPM for synchronized reinforcement layers, unchanged at
-  1× and 2× simulation speed.
-- Calm: a 25.8-second common introduction resolves into the spacious
-  36.9-second loop.
-- Active: the 40.6-second pressure variant shares that introduction's complete
-  25.8-second prefix. If combat begins during the opening, the transport moves
-  to the longer file at the same playhead offset instead of replaying bar one;
-  it then resolves into the compact 14.8-second combat loop.
-- Crisis: the active loop remains continuous while a syncopated frame-drum and
-  low-reed reinforcement enters. A 20/13-enemy hysteresis band and dwell gate
-  prevent orchestration from flapping when the battle hovers at one threshold.
-- Boss: the 14.8-second transition is phase-compatible with the active loop.
-  The transport adopts it at the current loop offset, then hands off to the
-  separate 12.9-second climax loop.
-- Victory: the supplied 18.5-second ending contains the boss loop as its first
-  12.9 seconds. It is adopted at the current boss-loop offset, so victory never
-  starts the climax phrase over from bar one.
+- Menu: Kevin MacLeod's 4:40 “Angevin” owns the briefing screen.
+- Battle: the complete 5:15 “Noble Race” starts once and continues through calm,
+  active, and crisis pressure. Calling waves early or toggling 2× cannot seek,
+  restart, repitch, or accelerate it.
+- Crisis: a syncopated frame-drum and low-reed reinforcement enters over the
+  same battle playhead. A 20/13-enemy hysteresis band and dwell gate prevent
+  orchestration from flapping around one threshold.
+- Boss: one deliberate 0.6-second crossfade introduces the separate 5:05
+  “Killers” composition. A reserved critical sting and low-frequency arrival
+  impact coincide with the reduced-motion-aware battlefield shock.
+- Victory: a short fanfare resolves the encounter while the score fades out.
 
-Horizontal resequencing makes state changes structurally meaningful without
-allowing short inter-wave gaps to chop the score into fragments. Calm must be
-requested continuously for ten seconds before the mode changes, and
-incompatible loop changes wait for a synchronized score boundary. The
-reinforcement layer uses an irregular eight-bar, 64-eighth-note form (23.4
-seconds at 82 BPM), replacing the former one-bar 2.93-second repetition.
+Only scene boundaries change compositions: briefing to battle, and battle to
+boss. Dynamic pressure lives in additive accents, not brittle horizontal
+resequencing. The reinforcement layer keeps its irregular eight-bar,
+64-eighth-note form (23.4 seconds at 82 BPM).
 
 ## Material identities
 
@@ -88,11 +80,10 @@ ordinary pool.
   simulation delta; 2× therefore changes neither score tempo nor pitch.
 - Requested modes pass through hysteresis and dwell before they become audible
   modes. Diagnostics expose the requested/candidate/current modes, their dwell
-  times, source starts and stops, phase transfers, safe transitions,
-  mid-phrase restart count, and the bounded recent transport history.
-- Authored entrance/transition handoffs pre-schedule the following loop at an
-  absolute context time before the prior source ends. Main-thread `ended`
-  callback latency therefore cannot insert a seam.
+  times, program changes, source starts and stops, mid-phrase restart count,
+  current cue duration, and the bounded recent transport history.
+- Program changes are explicit scene transitions, not reactive pressure edits;
+  `AudioContext` owns their clock and gain ramps.
 - Pause suspends the context. Resume continues its musical clock without
   scheduling a duplicate engine.
 - Page exit and hot replacement abort all listeners, clear every interval and

@@ -1,86 +1,45 @@
+import { assetUrl } from '../assets/url';
+
 export const SCORE_BPM = 82;
 export const SCORE_STEPS = 256;
 /** Eight bars of eighth-note slots: 23.41 seconds before an accent form repeats. */
 export const SCORE_ACCENT_FORM_STEPS = 64;
-export const SCORE_SAFE_TRANSITION_STEPS = 16;
 
 export type ScoreMode = 'calm' | 'active' | 'crisis' | 'boss';
-export type MusicCueId =
-  | 'intro-calm'
-  | 'intro-pressure'
-  | 'calm-loop'
-  | 'active-loop'
-  | 'boss-loop'
-  | 'boss-end'
-  | 'active-to-boss';
+export type MusicCueId = 'menu-theme' | 'battle-theme' | 'boss-theme';
 
 export interface MusicCue {
   id: MusicCueId;
   path: string;
-  role: 'intro' | 'loop' | 'transition' | 'ending';
+  role: 'menu' | 'battle' | 'boss';
   loop: boolean;
   duration: number;
   measuredLufs: number;
   measuredTruePeakDb: number;
-  /** Gain that stages every supplied segment close to -16 LUFS pre-bus. */
+  /** Runtime trim after offline normalization near -16 LUFS-I. */
   normalizationGainDb: number;
 }
 
-export interface CompoundCueRelationship {
-  from: MusicCueId;
-  to: MusicCueId;
-  sharedPrefixSeconds: number;
-  purpose: 'intensity-extension' | 'transition' | 'ending';
-}
-
 /**
- * Crocdent's CC0 "Last Journey" package is a real horizontally authored game
- * score: two introductions, three loops, a loop-to-loop transition, and an
- * ending. The measurements below come from ffmpeg loudnorm/true-peak analysis
- * of the exact source archive pinned in docs/AUDIO_ASSET_MANIFEST.md.
+ * Three complete pieces replace the former 12–37 second fragments. The
+ * battle program now runs for more than five minutes before a repeat; menu and
+ * boss use wholly separate compositions. Measurements are from the exact
+ * normalized runtime files pinned in docs/AUDIO_ASSET_MANIFEST.md.
  */
 export const MUSIC_CUES: Readonly<Record<MusicCueId, MusicCue>> = {
-  'intro-calm': {
-    id: 'intro-calm', path: '/assets/audio/music/Intro1.ogg', role: 'intro', loop: false,
-    duration: 25.846145, measuredLufs: -14.8, measuredTruePeakDb: -1.2, normalizationGainDb: -1.2,
+  'menu-theme': {
+    id: 'menu-theme', path: assetUrl('assets/audio/music/menu-theme.ogg'), role: 'menu', loop: true,
+    duration: 280.6065, measuredLufs: -16, measuredTruePeakDb: -1.4, normalizationGainDb: 0,
   },
-  'intro-pressure': {
-    id: 'intro-pressure', path: '/assets/audio/music/Intro2.ogg', role: 'intro', loop: false,
-    duration: 40.615374, measuredLufs: -14.2, measuredTruePeakDb: -1.2, normalizationGainDb: -1.8,
+  'battle-theme': {
+    id: 'battle-theme', path: assetUrl('assets/audio/music/battle-theme.ogg'), role: 'battle', loop: true,
+    duration: 315.7065, measuredLufs: -15.8, measuredTruePeakDb: -1.6, normalizationGainDb: -.2,
   },
-  'calm-loop': {
-    id: 'calm-loop', path: '/assets/audio/music/Loop1.ogg', role: 'loop', loop: true,
-    duration: 36.923084, measuredLufs: -14.0, measuredTruePeakDb: -1.3, normalizationGainDb: -2,
-  },
-  'active-loop': {
-    id: 'active-loop', path: '/assets/audio/music/Loop2.ogg', role: 'loop', loop: true,
-    duration: 14.769229, measuredLufs: -13.5, measuredTruePeakDb: -2.4, normalizationGainDb: -2.5,
-  },
-  'boss-loop': {
-    id: 'boss-loop', path: '/assets/audio/music/Loop3.ogg', role: 'loop', loop: true,
-    duration: 12.923084, measuredLufs: -9.9, measuredTruePeakDb: -0.1, normalizationGainDb: -6.1,
-  },
-  'boss-end': {
-    id: 'boss-end', path: '/assets/audio/music/Loop3End.ogg', role: 'ending', loop: false,
-    duration: 18.461542, measuredLufs: -10.0, measuredTruePeakDb: -0.1, normalizationGainDb: -6,
-  },
-  'active-to-boss': {
-    id: 'active-to-boss', path: '/assets/audio/music/Transi2to3.ogg', role: 'transition', loop: false,
-    duration: 14.769229, measuredLufs: -13.5, measuredTruePeakDb: -2.4, normalizationGainDb: -2.5,
+  'boss-theme': {
+    id: 'boss-theme', path: assetUrl('assets/audio/music/boss-theme.ogg'), role: 'boss', loop: true,
+    duration: 305.221208, measuredLufs: -16, measuredTruePeakDb: -2.6, normalizationGainDb: 0,
   },
 } as const;
-
-/**
- * These source files are compound alternatives, not independent phrases to
- * concatenate at arbitrary times. Their prefixes are phase-compatible. The
- * transport may therefore transfer at the current offset without replaying
- * the beginning of the phrase.
- */
-export const COMPOUND_CUE_RELATIONSHIPS = [
-  { from: 'intro-calm', to: 'intro-pressure', sharedPrefixSeconds: MUSIC_CUES['intro-calm'].duration, purpose: 'intensity-extension' },
-  { from: 'active-loop', to: 'active-to-boss', sharedPrefixSeconds: MUSIC_CUES['active-loop'].duration, purpose: 'transition' },
-  { from: 'boss-loop', to: 'boss-end', sharedPrefixSeconds: MUSIC_CUES['boss-loop'].duration, purpose: 'ending' },
-] as const satisfies readonly CompoundCueRelationship[];
 
 export interface ScoreAccentPattern {
   percussion: readonly number[];
@@ -167,36 +126,28 @@ export interface AdaptiveArrangement {
 
 export const ADAPTIVE_ARRANGEMENT: Readonly<Record<ScoreMode, AdaptiveArrangement>> = {
   calm: {
-    mode: 'calm', loop: 'calm-loop', firstEntrance: 'intro-calm',
+    mode: 'calm', loop: 'battle-theme',
     percussionDensity: 0, lowBrass: false,
-    description: 'Long-form forest introduction into the spacious primary loop.',
+    description: 'The full battle composition remains uninterrupted during preparation.',
   },
   active: {
-    mode: 'active', loop: 'active-loop', firstEntrance: 'intro-pressure',
+    mode: 'active', loop: 'battle-theme',
     percussionDensity: 1, lowBrass: false,
-    description: 'Authored pressure introduction and compact combat loop.',
+    description: 'The same long-form battle composition continues under a restrained tactical pulse.',
   },
   crisis: {
-    mode: 'crisis', loop: 'active-loop',
+    mode: 'crisis', loop: 'battle-theme',
     percussionDensity: 2, lowBrass: true,
-    description: 'The active loop persists for continuity while a syncopated frame-drum and low-reed layer enters.',
+    description: 'The battle composition persists while a syncopated frame-drum and low-reed layer enters.',
   },
   boss: {
-    mode: 'boss', loop: 'boss-loop',
+    mode: 'boss', loop: 'boss-theme',
     percussionDensity: 3, lowBrass: true,
-    description: 'A dedicated authored transition resolves into the climactic third loop.',
+    description: 'A separate five-minute choir-and-orchestra composition announces the sovereign.',
   },
 } as const;
 
-export const SCORE_FORM = [
-  'intro-calm',
-  'calm-loop',
-  'intro-pressure',
-  'active-loop',
-  'active-to-boss',
-  'boss-loop',
-  'boss-end',
-] as const satisfies readonly MusicCueId[];
+export const SCORE_FORM = ['menu-theme', 'battle-theme', 'boss-theme'] as const satisfies readonly MusicCueId[];
 
 export function dbToGain(db: number): number {
   return Math.pow(10, db / 20);
@@ -211,22 +162,15 @@ export function validateComposition(): string[] {
     if (!cue.path.endsWith('.ogg')) errors.push(`${cue.id} is not browser-native OGG.`);
     if (!(cue.duration > 0)) errors.push(`${cue.id} has no measured duration.`);
     if (cue.measuredTruePeakDb > 0) errors.push(`${cue.id} clips before staging.`);
-    if (cue.loop !== (cue.role === 'loop')) errors.push(`${cue.id} loop flag disagrees with its role.`);
+    if (!cue.loop) errors.push(`${cue.id} must be a continuous long-form program.`);
   }
   for (const arrangement of Object.values(ADAPTIVE_ARRANGEMENT)) {
     if (!ids.has(arrangement.loop)) errors.push(`${arrangement.mode} has no loop.`);
     if (arrangement.firstEntrance && !ids.has(arrangement.firstEntrance)) errors.push(`${arrangement.mode} has no entrance.`);
   }
-  if (MUSIC_CUES['active-to-boss'].duration !== MUSIC_CUES['active-loop'].duration) {
-    errors.push('The authored active-to-boss transition must match the active-loop duration.');
-  }
-  for (const relationship of COMPOUND_CUE_RELATIONSHIPS) {
-    const from = MUSIC_CUES[relationship.from];
-    const to = MUSIC_CUES[relationship.to];
-    if (relationship.sharedPrefixSeconds > Math.min(from.duration, to.duration)) {
-      errors.push(`${relationship.from} -> ${relationship.to} exceeds its shared prefix.`);
-    }
-  }
+  if (MUSIC_CUES['battle-theme'].duration < 300) errors.push('Battle music repeats before five minutes.');
+  if (MUSIC_CUES['boss-theme'].path === MUSIC_CUES['battle-theme'].path) errors.push('Boss music must be distinct from battle music.');
+  if (MUSIC_CUES['menu-theme'].path === MUSIC_CUES['battle-theme'].path) errors.push('Menu music must be distinct from battle music.');
   for (const [mode, pattern] of Object.entries(SCORE_ACCENT_PATTERNS)) {
     const steps = [...pattern.percussion, ...pattern.strong, ...pattern.lowBrass];
     if (steps.some((step) => step < 0 || step >= SCORE_ACCENT_FORM_STEPS)) errors.push(`${mode} accent exceeds its form.`);

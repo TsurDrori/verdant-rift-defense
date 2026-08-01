@@ -2,17 +2,16 @@ import type { GameEvent, GameSnapshot } from '../simulation/state';
 import type { EnemyId } from '../content/types';
 import type { GameController } from '../../phaser/adapters/GameController';
 import { BUILD_PADS } from '../simulation/geometry';
+import { assetUrl } from '../assets/url';
 import {
   advanceScoreModeGate,
   ADAPTIVE_ARRANGEMENT,
-  COMPOUND_CUE_RELATIONSHIPS,
   dbToGain,
   MUSIC_CUES,
   requestedScoreMode,
   SCORE_ACCENT_FORM_STEPS,
   SCORE_ACCENT_PATTERNS,
   SCORE_BPM,
-  SCORE_SAFE_TRANSITION_STEPS,
   SCORE_STEPS,
   type MusicCueId,
   type ScoreModeGateState,
@@ -36,7 +35,8 @@ interface VoiceCounts {
 }
 
 interface MusicVoice {
-  source: AudioBufferSourceNode;
+  element: HTMLAudioElement;
+  source: MediaElementAudioSourceNode;
   gain: GainNode;
   cue: MusicCueId;
   startAt: number;
@@ -44,7 +44,7 @@ interface MusicVoice {
   loop: boolean;
 }
 
-type MusicTransportEventKind = 'mode-request' | 'mode-enter' | 'source-start' | 'source-stop' | 'phase-transfer' | 'safe-transition';
+type MusicTransportEventKind = 'mode-request' | 'mode-enter' | 'source-start' | 'source-stop' | 'program-switch';
 
 interface MusicTransportEvent {
   sequence: number;
@@ -57,15 +57,6 @@ interface MusicTransportEvent {
   reason?: string;
 }
 
-interface PendingMusicTransition {
-  generation: number;
-  at: number;
-  mode: ScoreMode;
-  cue: MusicCueId;
-  fade: number;
-  reason: string;
-}
-
 type CriticalCue = 'leak' | 'boss' | 'ability-ready' | 'hero-defeat' | 'wave';
 
 const DEFAULT_MIX: AudioMix = { master: .82, music: .72, sfx: .88, ambience: .62 };
@@ -73,23 +64,25 @@ const ACCENT_STEP_SECONDS = 60 / SCORE_BPM / 2;
 const STANDARD_VOICE_LIMIT = 48;
 const AMBIENT_VOICE_LIMIT = 30;
 
+const audioAsset = (path: string): string => assetUrl(`assets/audio/${path}`);
+
 const SFX_FAMILIES = {
-  ui: ['/assets/audio/sfx/ui/click_001.ogg', '/assets/audio/sfx/ui/click_002.ogg', '/assets/audio/sfx/ui/click_003.ogg'],
-  invalid: ['/assets/audio/sfx/ui/error_001.ogg', '/assets/audio/sfx/ui/error_002.ogg', '/assets/audio/sfx/ui/error_003.ogg'],
-  confirm: ['/assets/audio/sfx/ui/confirmation_001.ogg', '/assets/audio/sfx/ui/confirmation_002.ogg', '/assets/audio/sfx/ui/confirmation_003.ogg'],
-  select: ['/assets/audio/sfx/ui/select_001.ogg', '/assets/audio/sfx/ui/select_002.ogg', '/assets/audio/sfx/ui/select_003.ogg'],
-  wood: ['/assets/audio/sfx/impact/impactWood_light_000.ogg', '/assets/audio/sfx/impact/impactWood_light_001.ogg', '/assets/audio/sfx/impact/impactWood_light_002.ogg'],
-  metal: ['/assets/audio/sfx/impact/impactMetal_medium_000.ogg', '/assets/audio/sfx/impact/impactMetal_medium_001.ogg', '/assets/audio/sfx/impact/impactMetal_medium_002.ogg'],
-  glass: ['/assets/audio/sfx/impact/impactGlass_medium_000.ogg', '/assets/audio/sfx/impact/impactGlass_medium_001.ogg', '/assets/audio/sfx/impact/impactGlass_medium_002.ogg'],
-  body: ['/assets/audio/sfx/impact/impactPunch_medium_000.ogg', '/assets/audio/sfx/impact/impactPunch_medium_001.ogg', '/assets/audio/sfx/impact/impactPunch_medium_002.ogg'],
-  heavyBody: ['/assets/audio/sfx/impact/impactPunch_heavy_000.ogg', '/assets/audio/sfx/impact/impactPunch_heavy_001.ogg', '/assets/audio/sfx/impact/impactPunch_heavy_002.ogg'],
-  softBody: ['/assets/audio/sfx/impact/impactSoft_medium_000.ogg', '/assets/audio/sfx/impact/impactSoft_medium_001.ogg', '/assets/audio/sfx/impact/impactSoft_medium_002.ogg'],
-  heavySoft: ['/assets/audio/sfx/impact/impactSoft_heavy_000.ogg', '/assets/audio/sfx/impact/impactSoft_heavy_001.ogg', '/assets/audio/sfx/impact/impactSoft_heavy_002.ogg'],
-  plate: ['/assets/audio/sfx/impact/impactPlate_heavy_000.ogg', '/assets/audio/sfx/impact/impactPlate_heavy_001.ogg', '/assets/audio/sfx/impact/impactPlate_heavy_002.ogg'],
-  bell: ['/assets/audio/sfx/impact/impactBell_heavy_000.ogg', '/assets/audio/sfx/impact/impactBell_heavy_001.ogg', '/assets/audio/sfx/impact/impactBell_heavy_002.ogg'],
-  blade: ['/assets/audio/sfx/rpg/knifeSlice.ogg', '/assets/audio/sfx/rpg/knifeSlice2.ogg', '/assets/audio/sfx/rpg/chop.ogg'],
-  creak: ['/assets/audio/sfx/rpg/creak1.ogg', '/assets/audio/sfx/rpg/creak2.ogg', '/assets/audio/sfx/rpg/creak3.ogg'],
-  vessel: ['/assets/audio/sfx/rpg/metalPot1.ogg', '/assets/audio/sfx/rpg/metalPot2.ogg', '/assets/audio/sfx/rpg/metalPot3.ogg'],
+  ui: ['sfx/ui/click_001.ogg', 'sfx/ui/click_002.ogg', 'sfx/ui/click_003.ogg'].map(audioAsset),
+  invalid: ['sfx/ui/error_001.ogg', 'sfx/ui/error_002.ogg', 'sfx/ui/error_003.ogg'].map(audioAsset),
+  confirm: ['sfx/ui/confirmation_001.ogg', 'sfx/ui/confirmation_002.ogg', 'sfx/ui/confirmation_003.ogg'].map(audioAsset),
+  select: ['sfx/ui/select_001.ogg', 'sfx/ui/select_002.ogg', 'sfx/ui/select_003.ogg'].map(audioAsset),
+  wood: ['sfx/impact/impactWood_light_000.ogg', 'sfx/impact/impactWood_light_001.ogg', 'sfx/impact/impactWood_light_002.ogg'].map(audioAsset),
+  metal: ['sfx/impact/impactMetal_medium_000.ogg', 'sfx/impact/impactMetal_medium_001.ogg', 'sfx/impact/impactMetal_medium_002.ogg'].map(audioAsset),
+  glass: ['sfx/impact/impactGlass_medium_000.ogg', 'sfx/impact/impactGlass_medium_001.ogg', 'sfx/impact/impactGlass_medium_002.ogg'].map(audioAsset),
+  body: ['sfx/impact/impactPunch_medium_000.ogg', 'sfx/impact/impactPunch_medium_001.ogg', 'sfx/impact/impactPunch_medium_002.ogg'].map(audioAsset),
+  heavyBody: ['sfx/impact/impactPunch_heavy_000.ogg', 'sfx/impact/impactPunch_heavy_001.ogg', 'sfx/impact/impactPunch_heavy_002.ogg'].map(audioAsset),
+  softBody: ['sfx/impact/impactSoft_medium_000.ogg', 'sfx/impact/impactSoft_medium_001.ogg', 'sfx/impact/impactSoft_medium_002.ogg'].map(audioAsset),
+  heavySoft: ['sfx/impact/impactSoft_heavy_000.ogg', 'sfx/impact/impactSoft_heavy_001.ogg', 'sfx/impact/impactSoft_heavy_002.ogg'].map(audioAsset),
+  plate: ['sfx/impact/impactPlate_heavy_000.ogg', 'sfx/impact/impactPlate_heavy_001.ogg', 'sfx/impact/impactPlate_heavy_002.ogg'].map(audioAsset),
+  bell: ['sfx/impact/impactBell_heavy_000.ogg', 'sfx/impact/impactBell_heavy_001.ogg', 'sfx/impact/impactBell_heavy_002.ogg'].map(audioAsset),
+  blade: ['sfx/rpg/knifeSlice.ogg', 'sfx/rpg/knifeSlice2.ogg', 'sfx/rpg/chop.ogg'].map(audioAsset),
+  creak: ['sfx/rpg/creak1.ogg', 'sfx/rpg/creak2.ogg', 'sfx/rpg/creak3.ogg'].map(audioAsset),
+  vessel: ['sfx/rpg/metalPot1.ogg', 'sfx/rpg/metalPot2.ogg', 'sfx/rpg/metalPot3.ogg'].map(audioAsset),
 } as const;
 
 type SampleFamily = keyof typeof SFX_FAMILIES;
@@ -131,27 +124,24 @@ export class AudioDirector {
   private nextAccentTime = 0;
   private accentStep = 0;
   private scoreEpoch = 0;
-  private musicGeneration = 0;
   private currentMusic?: MusicVoice;
-  private queuedMusic?: MusicVoice;
+  private musicVoices = new Set<MusicVoice>();
   private currentCue?: MusicCueId;
   private musicMode: ScoreMode = 'calm';
   private requestedMusicMode: ScoreMode = 'calm';
   private modeGate: ScoreModeGateState = { mode: 'calm', modeSince: 0, candidate: 'calm', candidateSince: 0 };
-  private pendingMusicTransition?: PendingMusicTransition;
   private transportSequence = 0;
   private transportEvents: MusicTransportEvent[] = [];
-  private stoppedMusicSources = new WeakSet<AudioBufferSourceNode>();
+  private stoppedMusicElements = new WeakSet<HTMLMediaElement>();
   private sourceStarts = 0;
   private sourceStops = 0;
-  private phaseTransfers = 0;
-  private safeTransitions = 0;
+  private programChanges = 0;
   private midPhraseRestarts = 0;
   private modeChanges = 0;
   private lastModeChangeAt?: number;
   private minimumModeChangeInterval = Number.POSITIVE_INFINITY;
-  private entrancesPlayed = new Set<ScoreMode>();
   private decoded = new Map<string, AudioBuffer>();
+  private streamedMusic = new Set<MusicCueId>();
   private assetsLoaded = false;
   private assetsFailed = 0;
   private activeSources = new Set<AudioBufferSourceNode>();
@@ -229,6 +219,8 @@ export class AudioDirector {
     assetsLoaded: boolean;
     assetsFailed: number;
     decodedAssets: number;
+    streamedMusicAssets: number;
+    decodedMusicBytes: 0;
     schedulerCount: number;
     ambienceSources: number;
     criticalCueCounts: Record<CriticalCue, number>;
@@ -246,13 +238,12 @@ export class AudioDirector {
       modeFor: number;
       sourceStarts: number;
       sourceStops: number;
-      phaseTransfers: number;
-      safeTransitions: number;
+      programChanges: number;
       midPhraseRestarts: number;
       modeChanges: number;
       minimumModeChangeInterval: number | null;
       currentOffset: number | null;
-      pending?: { mode: ScoreMode; cue: MusicCueId; at: number; in: number; reason: string };
+      currentDuration: number | null;
       recent: readonly MusicTransportEvent[];
     };
   }> {
@@ -270,6 +261,8 @@ export class AudioDirector {
       assetsLoaded: this.assetsLoaded,
       assetsFailed: this.assetsFailed,
       decodedAssets: this.decoded.size,
+      streamedMusicAssets: this.streamedMusic.size,
+      decodedMusicBytes: 0,
       schedulerCount: this.schedulerCount,
       ambienceSources: this.ambienceSources.size,
       criticalCueCounts: { ...this.criticalCueCounts },
@@ -287,19 +280,12 @@ export class AudioDirector {
         modeFor: Math.max(0, now - this.modeGate.modeSince),
         sourceStarts: this.sourceStarts,
         sourceStops: this.sourceStops,
-        phaseTransfers: this.phaseTransfers,
-        safeTransitions: this.safeTransitions,
+        programChanges: this.programChanges,
         midPhraseRestarts: this.midPhraseRestarts,
         modeChanges: this.modeChanges,
         minimumModeChangeInterval: Number.isFinite(this.minimumModeChangeInterval) ? this.minimumModeChangeInterval : null,
         currentOffset: this.currentMusic && this.context ? this.voiceOffset(this.currentMusic, this.context.currentTime) : null,
-        pending: this.pendingMusicTransition && this.context ? {
-          mode: this.pendingMusicTransition.mode,
-          cue: this.pendingMusicTransition.cue,
-          at: this.pendingMusicTransition.at,
-          in: Math.max(0, this.pendingMusicTransition.at - this.context.currentTime),
-          reason: this.pendingMusicTransition.reason,
-        } : undefined,
+        currentDuration: this.currentCue ? MUSIC_CUES[this.currentCue].duration : null,
         recent: [...this.transportEvents],
       },
     };
@@ -316,8 +302,6 @@ export class AudioDirector {
     }
     this.deferredTimers.forEach((timer) => window.clearTimeout(timer));
     this.deferredTimers.clear();
-    this.musicGeneration += 1;
-    this.pendingMusicTransition = undefined;
     this.stopCurrentMusic(.02);
     [...this.activeSources, ...this.ambienceSources].forEach((source) => {
       try { source.stop(); } catch { /* already stopped */ }
@@ -395,6 +379,10 @@ export class AudioDirector {
         this.ensureRunning();
       }
     }, { signal: this.teardown.signal });
+    // Long-form music streams through MediaElementAudioSourceNode instead of
+    // expanding three compressed files into roughly 346 MB of resident PCM.
+    // Starting inside the unlock gesture also satisfies mobile autoplay rules.
+    this.syncMusicProgram(true);
     void this.loadAssets();
     this.schedule();
   }
@@ -406,12 +394,24 @@ export class AudioDirector {
   }
 
   private async loadAssets(): Promise<void> {
-    const musicPaths = Object.values(MUSIC_CUES).map((cue) => cue.path);
-    await Promise.all(musicPaths.map((path) => this.loadBuffer(path)));
+    await Promise.all((Object.keys(MUSIC_CUES) as MusicCueId[]).map((cue) => this.loadMusicMetadata(cue)));
     if (this.disposed) return;
-    if (musicPaths.some((path) => this.decoded.has(path))) this.enterMusicMode(this.musicMode, true);
     await Promise.all(ALL_SAMPLE_PATHS.map((path) => this.loadBuffer(path)));
-    if (!this.disposed) this.assetsLoaded = musicPaths.concat(ALL_SAMPLE_PATHS).every((path) => this.decoded.has(path));
+    if (!this.disposed) {
+      this.assetsLoaded = this.streamedMusic.size === Object.keys(MUSIC_CUES).length
+        && ALL_SAMPLE_PATHS.every((path) => this.decoded.has(path));
+    }
+  }
+
+  private loadMusicMetadata(cueId: MusicCueId): Promise<void> {
+    const cue = MUSIC_CUES[cueId];
+    return fetch(cue.path, { method: 'HEAD' }).then((response) => {
+      if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+      this.streamedMusic.add(cueId);
+    }).catch((error: unknown) => {
+      this.assetsFailed += 1;
+      console.warn(`Music asset failed to load: ${cue.path}`, error);
+    });
   }
 
   private async loadBuffer(path: string): Promise<void> {
@@ -442,7 +442,8 @@ export class AudioDirector {
       });
       const boss = next.enemies.find((enemy) => enemy.alive && enemy.type === 'bloomlord');
       if (boss && boss.bossPhase !== this.lastBossPhase) {
-        if (this.lastBossPhase >= 0) this.criticalCue('boss', () => this.bossPhase(boss.bossPhase));
+        if (this.lastBossPhase < 0) this.criticalCue('boss', () => this.bossArrival());
+        else this.criticalCue('boss', () => this.bossPhase(boss.bossPhase));
         this.lastBossPhase = boss.bossPhase;
       } else if (!boss) {
         this.lastBossPhase = -1;
@@ -450,6 +451,7 @@ export class AudioDirector {
     }
     this.snapshot = next;
     this.updateStableMusicMode();
+    this.syncMusicProgram();
   }
 
   private applyMix(immediate = false): void {
@@ -495,273 +497,134 @@ export class AudioDirector {
       this.lastModeChangeAt = now;
       this.modeChanges += 1;
       this.modeGate = next;
+      this.musicMode = next.mode;
       this.recordTransport({ kind: 'mode-enter', at: now, mode: next.mode, reason: `${previous}->${next.mode}` });
-      this.enterMusicMode(next.mode);
+      if (next.mode === 'crisis') this.pressureStinger(.7);
+      else if (next.mode === 'active' && previous === 'crisis') this.pressureStinger(.35);
       return;
     }
     this.modeGate = next;
   }
 
-  private enterMusicMode(mode: ScoreMode, initial = false): void {
+  /**
+   * Menu, battle, and boss are complete compositions. Intensity changes only
+   * alter the restrained procedural reinforcement layer; they never restart
+   * or swap the five-minute battle program.
+   */
+  private syncMusicProgram(initial = false): void {
     if (!this.context || !this.buses || this.disposed) return;
-    const previous = this.musicMode;
-    this.musicMode = mode;
-    if (this.pendingMusicTransition && this.pendingMusicTransition.mode !== mode) this.pendingMusicTransition = undefined;
-
-    if (mode === 'crisis' && (previous === 'active' || previous === 'crisis') && this.currentMusic) {
-      this.pressureStinger(.7);
-      return;
+    if (this.snapshot.phase === 'victory' || this.snapshot.phase === 'defeat') return;
+    const cue: MusicCueId = this.snapshot.phase === 'briefing'
+      ? 'menu-theme'
+      : ADAPTIVE_ARRANGEMENT[this.musicMode].loop;
+    if (this.currentCue === cue && this.currentMusic) return;
+    const previous = this.currentCue;
+    this.playMusicCue(cue, true, initial ? .12 : cue === 'boss-theme' ? .6 : .35, `${this.snapshot.phase} program`, true);
+    if (previous && previous !== cue) {
+      this.programChanges += 1;
+      this.recordTransport({ kind: 'program-switch', at: this.context.currentTime, mode: this.musicMode, cue, fromCue: previous, offset: 0, reason: `${previous}->${cue}` });
     }
-    if (mode === 'active' && previous === 'crisis' && this.currentMusic) {
-      this.pressureStinger(.35);
-      return;
-    }
-    if (mode === 'boss') {
-      if (this.phaseTransferSequence('active-to-boss', 'boss-loop', mode, 'active-loop compound transition')) return;
-      if (this.currentMusic) this.scheduleSafeTransition('boss-loop', mode, 1.05, 'boss entry at score boundary');
-      else this.startMusicSequence('active-to-boss', 'boss-loop', mode, .12);
-      return;
-    }
-
-    if (mode === 'active') {
-      if (this.currentCue === 'intro-calm' && this.phaseTransferSequence('intro-pressure', 'active-loop', mode, 'shared introduction prefix')) return;
-      if (this.currentCue === 'intro-pressure' || this.currentCue === 'active-loop') return;
-      if (this.currentMusic) this.scheduleSafeTransition('active-loop', mode, 1.15, 'calm-to-active score boundary');
-      else this.startMusicSequence('intro-pressure', 'active-loop', mode, initial ? .12 : 1.15);
-      return;
-    }
-
-    const arrangement = ADAPTIVE_ARRANGEMENT[mode];
-    if (this.currentCue === arrangement.loop || this.currentCue === arrangement.firstEntrance) return;
-    const entrance = !this.currentMusic && arrangement.firstEntrance && !this.entrancesPlayed.has(mode) ? arrangement.firstEntrance : undefined;
-    if (entrance) {
-      this.entrancesPlayed.add(mode);
-      this.startMusicSequence(entrance, arrangement.loop, mode, initial ? .12 : 1.15);
-    } else if (this.currentMusic) {
-      this.scheduleSafeTransition(arrangement.loop, mode, 1.15, `${previous}-to-${mode} score boundary`);
-    } else {
-      this.playMusicCue(arrangement.loop, true, initial ? .12 : 1.15, 'mode start');
-    }
-  }
-
-  private startMusicSequence(entrance: MusicCueId, loop: MusicCueId, mode: ScoreMode, fade: number): void {
-    const generation = ++this.musicGeneration;
-    if (!this.context || !this.buses) return;
-    const entranceBuffer = this.decoded.get(MUSIC_CUES[entrance].path);
-    const loopBuffer = this.decoded.get(MUSIC_CUES[loop].path);
-    if (!entranceBuffer || !loopBuffer) return;
-
-    this.stopCurrentMusic(fade);
-    const startAt = this.context.currentTime + .025;
-    const handoffAt = startAt + entranceBuffer.duration;
-    let queued: MusicVoice | undefined;
-    const first = this.createMusicVoice(entrance, false, startAt, fade, () => {
-      const compatibleCrisisContinuation = mode === 'active' && this.musicMode === 'crisis';
-      const compatible = this.musicGeneration === generation && (this.musicMode === mode || compatibleCrisisContinuation);
-      if (!compatible) {
-        if (queued) this.stopMusicVoice(queued, .02);
-        if (this.queuedMusic === queued) this.queuedMusic = undefined;
-        return;
-      }
-
-      // A source stopped early by a test, device interruption, or decoder
-      // fault must not leave a future loop waiting at its old absolute time.
-      if (this.context && this.context.currentTime < handoffAt - .05) {
-        if (queued) this.stopMusicVoice(queued, .02);
-        if (this.queuedMusic === queued) this.queuedMusic = undefined;
-        this.playMusicCue(loop, true, .035, 'early sequence recovery');
-        return;
-      }
-      if (queued) {
-        this.currentMusic = queued;
-        this.queuedMusic = undefined;
-        this.currentCue = loop;
-      }
-    }, 0, 'sequence entrance');
-    if (!first) return;
-    // Schedule against the AudioContext clock before the entrance ends. The
-    // authored transition and loop therefore meet sample-contiguously even if
-    // the main thread is busy when the first source's `ended` event arrives.
-    queued = this.createMusicVoice(loop, true, handoffAt, .004, undefined, 0, 'natural sequence handoff');
-    if (!queued) {
-      this.stopMusicVoice(first, .02);
-      return;
-    }
-    this.currentMusic = first;
-    this.queuedMusic = queued;
-    this.currentCue = entrance;
   }
 
   private createMusicVoice(
     cueId: MusicCueId,
     loop: boolean,
-    when: number,
     fade: number,
-    onEnded?: () => void,
     offset = 0,
     reason = 'transport',
   ): MusicVoice | undefined {
     if (!this.context || !this.buses) return;
     const cue = MUSIC_CUES[cueId];
-    const buffer = this.decoded.get(cue.path);
-    if (!buffer) return;
-    const source = this.context.createBufferSource();
-    source.buffer = buffer;
-    source.loop = loop;
+    const element = new Audio(cue.path);
+    element.preload = 'auto';
+    element.loop = loop;
+    element.setAttribute('playsinline', '');
+    const source = this.context.createMediaElementSource(element);
     const gain = this.context.createGain();
-    const target = dbToGain(cue.normalizationGainDb);
-    gain.gain.setValueAtTime(.0001, when);
-    gain.gain.exponentialRampToValueAtTime(Math.max(.0001, target), when + Math.max(.02, fade));
+    const startAt = this.context.currentTime;
+    gain.gain.setValueAtTime(.0001, startAt);
     source.connect(gain).connect(this.buses.music);
-    source.onended = () => {
-      if (this.currentMusic?.source === source) this.currentMusic = undefined;
-      if (this.queuedMusic?.source === source) this.queuedMusic = undefined;
-      onEnded?.();
-    };
-    const boundedOffset = Math.max(0, Math.min(buffer.duration - .001, offset));
-    source.start(when, boundedOffset);
+    const boundedOffset = Math.max(0, Math.min(cue.duration - .001, offset));
+    if (boundedOffset > 0) {
+      element.addEventListener('loadedmetadata', () => { element.currentTime = boundedOffset; }, { once: true });
+    }
+    element.addEventListener('ended', () => {
+      this.musicVoices.delete(voice);
+      if (this.currentMusic?.element === element) this.currentMusic = undefined;
+    }, { once: true });
+    element.addEventListener('playing', () => {
+      if (!this.context || this.stoppedMusicElements.has(element)) return;
+      const now = this.context.currentTime;
+      gain.gain.cancelScheduledValues(now);
+      gain.gain.setValueAtTime(.0001, now);
+      gain.gain.exponentialRampToValueAtTime(Math.max(.0001, dbToGain(cue.normalizationGainDb)), now + Math.max(.02, fade));
+    }, { once: true });
+    void element.play().catch((error: unknown) => {
+      if (this.stoppedMusicElements.has(element) || (error instanceof DOMException && error.name === 'AbortError')) return;
+      this.assetsFailed += 1;
+      console.warn(`Music playback failed: ${cue.path}`, error);
+      if (this.currentMusic?.element === element) this.currentMusic = undefined;
+      source.disconnect();
+      gain.disconnect();
+    });
     this.sourceStarts += 1;
-    this.recordTransport({ kind: 'source-start', at: when, mode: this.musicMode, cue: cueId, offset: boundedOffset, reason });
-    return { source, gain, cue: cueId, startAt: when, offset: boundedOffset, loop };
+    this.recordTransport({ kind: 'source-start', at: startAt, mode: this.musicMode, cue: cueId, offset: boundedOffset, reason });
+    const voice = { element, source, gain, cue: cueId, startAt, offset: boundedOffset, loop };
+    this.musicVoices.add(voice);
+    return voice;
   }
 
-  private playMusicCue(cueId: MusicCueId, loop: boolean, fade: number, reason = 'direct cue'): void {
+  private playMusicCue(cueId: MusicCueId, loop: boolean, fade: number, reason = 'direct cue', intentionalSwitch = false): void {
     if (!this.context) return;
-    const replaced = Boolean(this.currentMusic || this.queuedMusic);
-    this.stopCurrentMusic(fade);
-    const voice = this.createMusicVoice(cueId, loop, this.context.currentTime + .025, fade, undefined, 0, reason);
+    const previous = this.currentMusic;
+    const replaced = Boolean(previous);
+    const voice = this.createMusicVoice(cueId, loop, fade, 0, reason);
     if (!voice) return;
-    if (replaced) this.midPhraseRestarts += 1;
+    if (replaced && !intentionalSwitch) this.midPhraseRestarts += 1;
     this.currentMusic = voice;
     this.currentCue = cueId;
+    if (previous) {
+      // A remote or cold-cache stream may need time to buffer. Keep the old
+      // composition audible until the browser confirms the new one is playing;
+      // only then begin the simple crossfade requested by the sound direction.
+      voice.element.addEventListener('playing', () => this.stopMusicVoice(previous, fade), { once: true });
+    }
   }
 
   private stopCurrentMusic(fade: number): void {
     if (!this.context) return;
-    const voices = [this.currentMusic, this.queuedMusic].filter((voice): voice is MusicVoice => Boolean(voice));
+    const voices = [...this.musicVoices];
     this.currentMusic = undefined;
-    this.queuedMusic = undefined;
     voices.forEach((voice) => this.stopMusicVoice(voice, fade));
   }
 
   private stopMusicVoice(voice: MusicVoice, fade: number): void {
     if (!this.context) return;
-    if (this.stoppedMusicSources.has(voice.source)) return;
-    this.stoppedMusicSources.add(voice.source);
+    if (this.stoppedMusicElements.has(voice.element)) return;
+    this.stoppedMusicElements.add(voice.element);
     const now = this.context.currentTime;
+    const stopOffset = this.voiceOffset(voice, now);
     voice.gain.gain.cancelScheduledValues(now);
     voice.gain.gain.setTargetAtTime(.0001, now, Math.max(.01, fade / 4));
-    try { voice.source.stop(now + Math.max(.04, fade)); } catch { /* already ended */ }
+    const release = (): void => {
+      voice.element.pause();
+      voice.element.removeAttribute('src');
+      voice.element.load();
+      voice.source.disconnect();
+      voice.gain.disconnect();
+      this.musicVoices.delete(voice);
+    };
+    if (this.disposed || fade <= .02) release();
+    else this.defer(release, (Math.max(.04, fade) + .03) * 1000);
     this.sourceStops += 1;
-    this.recordTransport({ kind: 'source-stop', at: now + Math.max(.04, fade), mode: this.musicMode, cue: voice.cue, offset: this.voiceOffset(voice, now), reason: 'fade stop' });
-  }
-
-  private phaseTransferSequence(
-    cue: MusicCueId,
-    loop: MusicCueId | undefined,
-    mode: ScoreMode,
-    reason: string,
-  ): boolean {
-    if (!this.context || !this.currentMusic) return false;
-    const current = this.currentMusic;
-    const relationship = COMPOUND_CUE_RELATIONSHIPS.find((candidate) => candidate.from === current.cue && candidate.to === cue);
-    if (!relationship) return false;
-    const startAt = this.context.currentTime + .025;
-    const offset = this.voiceOffset(current, startAt);
-    if (offset >= relationship.sharedPrefixSeconds - .01) return false;
-    const generation = ++this.musicGeneration;
-    const oldVoices = [this.currentMusic, this.queuedMusic].filter((voice): voice is MusicVoice => Boolean(voice));
-    this.currentMusic = undefined;
-    this.queuedMusic = undefined;
-    oldVoices.forEach((voice) => this.stopMusicVoiceAt(voice, startAt, .045, 'phase-compatible transfer'));
-
-    let queued: MusicVoice | undefined;
-    const first = this.createMusicVoice(cue, false, startAt, .045, () => {
-      const compatibleCrisisContinuation = mode === 'active' && this.musicMode === 'crisis';
-      if (this.musicGeneration !== generation || (this.musicMode !== mode && !compatibleCrisisContinuation)) {
-        if (queued) this.stopMusicVoice(queued, .02);
-        return;
-      }
-      if (queued) {
-        this.currentMusic = queued;
-        this.queuedMusic = undefined;
-        this.currentCue = loop;
-      }
-    }, offset, reason);
-    if (!first) return false;
-    if (loop) {
-      const handoffAt = startAt + MUSIC_CUES[cue].duration - offset;
-      queued = this.createMusicVoice(loop, true, handoffAt, .004, undefined, 0, 'compound sequence handoff');
-      if (!queued) {
-        this.stopMusicVoice(first, .02);
-        return false;
-      }
-    }
-    this.currentMusic = first;
-    this.queuedMusic = queued;
-    this.currentCue = cue;
-    this.phaseTransfers += 1;
-    this.recordTransport({ kind: 'phase-transfer', at: startAt, mode, cue, fromCue: current.cue, offset, reason });
-    return true;
-  }
-
-  private scheduleSafeTransition(cue: MusicCueId, mode: ScoreMode, fade: number, reason: string): void {
-    if (!this.context || !this.currentMusic) return;
-    if (this.pendingMusicTransition?.mode === mode && this.pendingMusicTransition.cue === cue) return;
-    const generation = ++this.musicGeneration;
-    if (this.queuedMusic) {
-      this.stopMusicVoice(this.queuedMusic, .02);
-      this.queuedMusic = undefined;
-    }
-    const grid = ACCENT_STEP_SECONDS * SCORE_SAFE_TRANSITION_STEPS;
-    const phase = this.voiceOffset(this.currentMusic, this.context.currentTime);
-    let wait = grid - (phase % grid);
-    if (wait < .35) wait += grid;
-    const at = this.context.currentTime + wait;
-    this.pendingMusicTransition = { generation, at, mode, cue, fade, reason };
-    this.recordTransport({ kind: 'safe-transition', at, mode, cue, fromCue: this.currentMusic.cue, offset: 0, reason: `queued: ${reason}` });
-  }
-
-  private commitPendingMusicTransition(): void {
-    if (!this.context || !this.pendingMusicTransition) return;
-    const pending = this.pendingMusicTransition;
-    if (this.context.currentTime + .14 < pending.at) return;
-    this.pendingMusicTransition = undefined;
-    if (pending.generation !== this.musicGeneration || pending.mode !== this.musicMode) return;
-    const startAt = Math.max(pending.at, this.context.currentTime + .012);
-    const previous = this.currentMusic;
-    if (previous) this.stopMusicVoiceAt(previous, startAt, pending.fade, 'safe score boundary');
-    const voice = this.createMusicVoice(
-      pending.cue,
-      MUSIC_CUES[pending.cue].loop,
-      startAt,
-      pending.fade,
-      undefined,
-      0,
-      pending.reason,
-    );
-    if (!voice) return;
-    this.queuedMusic = voice;
-    this.safeTransitions += 1;
-    this.recordTransport({ kind: 'safe-transition', at: startAt, mode: pending.mode, cue: pending.cue, fromCue: previous?.cue, offset: 0, reason: `committed: ${pending.reason}` });
-  }
-
-  private stopMusicVoiceAt(voice: MusicVoice, stopAt: number, fade: number, reason: string): void {
-    if (!this.context) return;
-    if (this.stoppedMusicSources.has(voice.source)) return;
-    this.stoppedMusicSources.add(voice.source);
-    const fadeStart = Math.max(this.context.currentTime, stopAt - Math.max(.02, fade));
-    voice.gain.gain.cancelScheduledValues(fadeStart);
-    voice.gain.gain.setValueAtTime(Math.max(.0001, voice.gain.gain.value), fadeStart);
-    voice.gain.gain.exponentialRampToValueAtTime(.0001, stopAt + .02);
-    try { voice.source.stop(stopAt + .025); } catch { /* already ended */ }
-    this.sourceStops += 1;
-    this.recordTransport({ kind: 'source-stop', at: stopAt + .025, mode: this.musicMode, cue: voice.cue, offset: this.voiceOffset(voice, stopAt), reason });
+    this.recordTransport({ kind: 'source-stop', at: now + Math.max(.04, fade), mode: this.musicMode, cue: voice.cue, offset: stopOffset, reason: 'fade stop' });
   }
 
   private voiceOffset(voice: MusicVoice, at: number): number {
     const duration = MUSIC_CUES[voice.cue].duration;
-    const elapsed = Math.max(0, at - voice.startAt) + voice.offset;
+    const elapsed = Number.isFinite(voice.element.currentTime)
+      ? voice.element.currentTime
+      : Math.max(0, at - voice.startAt) + voice.offset;
     return voice.loop ? elapsed % duration : Math.min(duration, elapsed);
   }
 
@@ -770,24 +633,12 @@ export class AudioDirector {
     if (this.transportEvents.length > 64) this.transportEvents.splice(0, this.transportEvents.length - 64);
   }
 
-  private playBossEnding(): void {
-    this.musicGeneration += 1;
-    if (this.phaseTransferSequence('boss-end', undefined, this.musicMode, 'boss-loop compound ending')) return;
-    if (this.currentMusic) this.scheduleSafeTransition('boss-end', this.musicMode, .18, 'victory ending at score boundary');
-    else this.playMusicCue('boss-end', false, .18, 'victory ending');
-  }
-
   private schedule(): void {
     const context = this.context;
     if (!context || context.state !== 'running' || this.disposed) return;
     this.updateStableMusicMode();
-    this.commitPendingMusicTransition();
+    this.syncMusicProgram();
     this.sampleMeter();
-    if (this.queuedMusic && context.currentTime >= this.queuedMusic.startAt) {
-      this.currentMusic = this.queuedMusic;
-      this.currentCue = this.queuedMusic.cue;
-      this.queuedMusic = undefined;
-    }
     while (this.nextAccentTime < context.currentTime + .14) {
       this.scheduleAccent(this.nextAccentTime, this.accentStep);
       this.nextAccentTime += ACCENT_STEP_SECONDS;
@@ -898,7 +749,7 @@ export class AudioDirector {
       this.breakerSnap(this.worldPan(tower ? BUILD_PADS[tower.padIndex]?.x ?? 800 : 800));
     } else if (event.type === 'victory') {
       this.victoryFanfare();
-      this.playBossEnding();
+      this.stopCurrentMusic(1.2);
     } else if (event.type === 'defeat') {
       this.defeatSting(0);
       this.stopCurrentMusic(1.1);
@@ -1015,6 +866,13 @@ export class AudioDirector {
     this.playSample('plate', pan, .74, .7, 2);
     this.playSample('bell', -pan * .4, .58, .62, 2);
     if (this.context) this.toneTransient(this.context.currentTime, 46, .9, .22, 'sfx', pan, .2, 'sine', -16, 2);
+  }
+
+  private bossArrival(): void {
+    this.bossWarning(0);
+    this.defer(() => this.playSample('heavyBody', -.18, .66, .58, 2), 120);
+    this.defer(() => this.playSample('plate', .18, .58, .52, 2), 260);
+    if (this.context) this.toneTransient(this.context.currentTime, 31, 1.35, .3, 'sfx', 0, .22, 'sine', -13, 2);
   }
 
   private bossPhase(phase: number): void {

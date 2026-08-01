@@ -46,7 +46,7 @@ await page.evaluate(() => {
   const simulation = window.__VERDANT_RIFT__?.simulation;
   if (!simulation) return;
   const shots = [
-    ['thorn', { x: 333, y: 147 }, 0xb7dc69, 0],
+    ['thorn', { x: 394, y: 154 }, 0xb7dc69, 0],
     ['ember', { x: 575, y: 327 }, 0xffa24c, 54],
     ['astral', { x: 1025, y: 207 }, 0xcf9eff, 0],
     ['aegis', { x: 1244, y: 263 }, 0xbde5d8, 0],
@@ -59,7 +59,8 @@ await page.evaluate(() => {
 });
 const lyraCast = await page.evaluate(() => {
   const controller = window.__VERDANT_RIFT__;
-  controller?.castAtFrontline('lyra');
+  const lyra = controller?.snapshot().heroes.find((hero) => hero.id === 'lyra');
+  if (controller && lyra) controller.simulation.useAbility('lyra', { x: lyra.x, y: lyra.y });
   return controller?.snapshot().heroes.find((hero) => hero.id === 'lyra')?.ultimateCooldown ?? 0;
 });
 if (lyraCast <= 0) throw new Error('Lyra review cast did not fire.');
@@ -87,8 +88,13 @@ await page.evaluate(() => {
   simulation.towers.forEach((tower) => { tower.cooldown = 0; tower.disabledTime = 0; });
   simulation.updateBossStrikes();
 });
-await page.waitForTimeout(130);
+await page.waitForFunction(() => {
+  const scene = window.__VERDANT_RIFT_GAME__?.scene.getScene('battle');
+  return scene?.getPerformanceDiagnostics?.().bossArrivalAnnouncements === 1;
+});
+await page.waitForTimeout(350);
 await page.evaluate(() => document.querySelector('[data-toast-stack]')?.replaceChildren());
+await page.screenshot({ path: 'test-results/screenshots/boss-arrival.png' });
 await page.evaluate(() => window.__VERDANT_RIFT_GAME__?.loop.sleep());
 await page.screenshot({ path: 'test-results/screenshots/boss-pass-2.png' });
 await page.evaluate(() => {

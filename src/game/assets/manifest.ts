@@ -1,3 +1,5 @@
+import { assetUrl } from './url';
+
 export const ASSETS = {
   environment: {
     verdantRift: 'environment.verdant-rift',
@@ -25,24 +27,24 @@ export const ASSETS = {
 } as const;
 
 export const SPRITESHEETS = {
-  [ASSETS.towerRanks.thorn]: { path: '/assets/towers/ranks/thorn-ranks.png', frameWidth: 591, frameHeight: 887 },
-  [ASSETS.towerRanks.ember]: { path: '/assets/towers/ranks/ember-ranks.png', frameWidth: 724, frameHeight: 724 },
-  [ASSETS.towerRanks.aegis]: { path: '/assets/towers/ranks/aegis-ranks.png', frameWidth: 674, frameHeight: 777 },
-  [ASSETS.towerRanks.astral]: { path: '/assets/towers/ranks/astral-ranks.png', frameWidth: 591, frameHeight: 887 },
-  [ASSETS.towerBranches.thorn]: { path: '/assets/towers/branches/thorn-branches.png', frameWidth: 887, frameHeight: 887 },
-  [ASSETS.towerBranches.ember]: { path: '/assets/towers/branches/ember-branches.png', frameWidth: 775, frameHeight: 1014 },
-  [ASSETS.towerBranches.aegis]: { path: '/assets/towers/branches/aegis-branches.png', frameWidth: 836, frameHeight: 941 },
-  [ASSETS.towerBranches.astral]: { path: '/assets/towers/branches/astral-branches.png', frameWidth: 768, frameHeight: 1024 },
-  [ASSETS.units.aegisDefender]: { path: '/assets/units/expanded/aegis-defender-12.png', frameWidth: 402, frameHeight: 347 },
-  [ASSETS.heroActions.kael]: { path: '/assets/heroes/animation/expanded/kael-actions-12.png', frameWidth: 344, frameHeight: 428 },
-  [ASSETS.heroActions.lyra]: { path: '/assets/heroes/animation/expanded/lyra-actions-12.png', frameWidth: 382, frameHeight: 372 },
-  [ASSETS.enemyActions.skitter]: { path: '/assets/enemies/animation/expanded/skitter-actions-12.png', frameWidth: 402, frameHeight: 366 },
-  [ASSETS.enemyActions.marauder]: { path: '/assets/enemies/animation/expanded/marauder-actions-12.png', frameWidth: 360, frameHeight: 349 },
-  [ASSETS.enemyActions.wisp]: { path: '/assets/enemies/animation/expanded/wisp-actions-12.png', frameWidth: 337, frameHeight: 367 },
-  [ASSETS.enemyActions.brute]: { path: '/assets/enemies/animation/expanded/brute-actions-12.png', frameWidth: 396, frameHeight: 313 },
-  [ASSETS.enemyActions.bloomlord]: { path: '/assets/enemies/animation/expanded/bloomlord-actions-12.png', frameWidth: 389, frameHeight: 367 },
+  [ASSETS.towerRanks.thorn]: { path: assetUrl('assets/towers/ranks/thorn-ranks.png'), frameWidth: 591, frameHeight: 887 },
+  [ASSETS.towerRanks.ember]: { path: assetUrl('assets/towers/ranks/ember-ranks.png'), frameWidth: 724, frameHeight: 724 },
+  [ASSETS.towerRanks.aegis]: { path: assetUrl('assets/towers/ranks/aegis-ranks.png'), frameWidth: 674, frameHeight: 777 },
+  [ASSETS.towerRanks.astral]: { path: assetUrl('assets/towers/ranks/astral-ranks.png'), frameWidth: 591, frameHeight: 887 },
+  [ASSETS.towerBranches.thorn]: { path: assetUrl('assets/towers/branches/thorn-branches.png'), frameWidth: 887, frameHeight: 887 },
+  [ASSETS.towerBranches.ember]: { path: assetUrl('assets/towers/branches/ember-branches.png'), frameWidth: 775, frameHeight: 1014 },
+  [ASSETS.towerBranches.aegis]: { path: assetUrl('assets/towers/branches/aegis-branches.png'), frameWidth: 836, frameHeight: 941 },
+  [ASSETS.towerBranches.astral]: { path: assetUrl('assets/towers/branches/astral-branches.png'), frameWidth: 768, frameHeight: 1024 },
+  [ASSETS.units.aegisDefender]: { path: assetUrl('assets/units/expanded/aegis-defender-12.png'), frameWidth: 402, frameHeight: 347 },
+  [ASSETS.heroActions.kael]: { path: assetUrl('assets/heroes/animation/expanded/kael-actions-12.png'), frameWidth: 344, frameHeight: 428 },
+  [ASSETS.heroActions.lyra]: { path: assetUrl('assets/heroes/animation/expanded/lyra-actions-12.png'), frameWidth: 382, frameHeight: 372 },
+  [ASSETS.enemyActions.skitter]: { path: assetUrl('assets/enemies/animation/expanded/skitter-actions-12.png'), frameWidth: 402, frameHeight: 366 },
+  [ASSETS.enemyActions.marauder]: { path: assetUrl('assets/enemies/animation/expanded/marauder-actions-12.png'), frameWidth: 360, frameHeight: 349 },
+  [ASSETS.enemyActions.wisp]: { path: assetUrl('assets/enemies/animation/expanded/wisp-actions-12.png'), frameWidth: 337, frameHeight: 367 },
+  [ASSETS.enemyActions.brute]: { path: assetUrl('assets/enemies/animation/expanded/brute-actions-12.png'), frameWidth: 396, frameHeight: 313 },
+  [ASSETS.enemyActions.bloomlord]: { path: assetUrl('assets/enemies/animation/expanded/bloomlord-actions-12.png'), frameWidth: 389, frameHeight: 367 },
 } as const;
 
 export const ASSET_PATHS = {
-  [ASSETS.environment.verdantRift]: '/assets/environment/verdant-rift.png',
+  [ASSETS.environment.verdantRift]: assetUrl('assets/environment/verdant-rift.png'),
 } as const;

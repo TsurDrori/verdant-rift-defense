@@ -35,10 +35,17 @@ Open `http://localhost:4173`.
 - Armor/resistance, flying coverage, burn, slow, mark, expose, splash, chain, aura, and targeting priorities
 - Two directly commandable heroes with distinct attacks and ultimates
 - Multi-phase boss with escort thresholds, readable ROOTFALL telegraph, tower disable/recovery, and dedicated boss UI
+- Separate 4:40 menu, 5:15 battle, and 5:05 boss compositions streamed through a four-bus Web Audio mix
 - First-clear Insight reward, three-node pre-stage loadout, and free respec
 - Capped early-call economy with hero-command recharge
 - Fixed 60 Hz deterministic simulation and impact-synchronized health, bounty, audio, defeat, and victory presentation
 - Responsive landscape/portrait behavior, keyboard play, reduced motion, contrast mode, pause-on-hidden, and persistent sound settings
+
+## Music
+
+“Angevin”, “Noble Race”, and “Killers” by Kevin MacLeod
+([incompetech.com](https://incompetech.com/)), licensed under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 
 ## Verification
 

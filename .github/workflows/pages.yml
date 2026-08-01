@@ -35,6 +35,8 @@ jobs:
         run: pnpm test
       - name: Build production site
         run: pnpm build
+      - name: Validate Pages asset paths
+        run: pnpm test:build-assets
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload Pages artifact

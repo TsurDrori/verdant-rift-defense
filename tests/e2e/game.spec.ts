@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+const FIRST_PAINTED_PAD = { x: 394, y: 154 } as const;
+
 const hostedCI = Boolean((globalThis as typeof globalThis & {
   process?: { env?: { CI?: string } };
 }).process?.env?.CI);
@@ -26,7 +28,7 @@ test('boots, enters battle, builds a tower, and starts combat', async ({ page })
   await expect(canvas).toBeVisible();
   const box = await canvas.boundingBox();
   if (!box) throw new Error('Battlefield canvas did not receive a layout box.');
-  await page.mouse.click(box.x + box.width * (333 / 1600), box.y + box.height * (147 / 900));
+  await page.mouse.click(box.x + box.width * (FIRST_PAINTED_PAD.x / 1600), box.y + box.height * (FIRST_PAINTED_PAD.y / 900));
   await expect(page.getByRole('heading', { name: 'Choose a covenant' })).toBeVisible();
   await page.getByRole('button', { name: /Thornwatch/ }).click();
   await expect(page.getByRole('heading', { name: 'Thornwatch' })).toBeVisible();
@@ -36,12 +38,34 @@ test('boots, enters battle, builds a tower, and starts combat', async ({ page })
   await expect(page.getByText('WAVE 1 IN MOTION')).toBeVisible();
 });
 
+test('anchors the first foundation and its tower to the painted stone circle', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto('/');
+  await page.getByRole('button', { name: /ENTER THE RIFT/ }).click();
+
+  const pad = await page.evaluate(() => {
+    const scene = window.__VERDANT_RIFT_GAME__!.scene.getScene('battle');
+    const object = scene.children.getByName('build-pad-hit-0') as unknown as { x: number; y: number } | null;
+    return object ? { x: object.x, y: object.y } : null;
+  });
+  expect(pad).toEqual(FIRST_PAINTED_PAD);
+
+  await clickWorld(page, FIRST_PAINTED_PAD.x, FIRST_PAINTED_PAD.y);
+  await page.getByRole('button', { name: /Thornwatch/ }).click();
+  await expect.poll(() => page.evaluate(() => {
+    const tower = window.__VERDANT_RIFT__!.snapshot().towers[0];
+    if (!tower) return null;
+    const view = window.__VERDANT_RIFT_GAME__!.scene.getScene('battle').children.getByName(`tower-view-${tower.uid}`) as unknown as { x: number; y: number } | null;
+    return view ? { x: view.x, y: view.y } : null;
+  })).toEqual(FIRST_PAINTED_PAD);
+});
+
 test('tower crowns select exact identities and repeated upgrades stay on their owning tower', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: /Wanderer/ }).click();
   await page.getByRole('button', { name: /ENTER THE RIFT/ }).click();
 
-  await clickWorld(page, 333, 147);
+  await clickWorld(page, FIRST_PAINTED_PAD.x, FIRST_PAINTED_PAD.y);
   await page.getByRole('button', { name: /Thornwatch/ }).click();
   await clickWorld(page, 575, 327);
   await page.getByRole('button', { name: /Thornwatch/ }).click();
@@ -53,7 +77,7 @@ test('tower crowns select exact identities and repeated upgrades stay on their o
   expect(second).toBeDefined();
 
   // The first tower's crown is far above the old centered container hit-area.
-  await clickWorld(page, 333, 68);
+  await clickWorld(page, FIRST_PAINTED_PAD.x, 75);
   await expect.poll(() => page.evaluate(() => {
     const selection = window.__VERDANT_RIFT__?.selection;
     return selection?.kind === 'tower' ? selection.towerUid : undefined;
@@ -279,8 +303,8 @@ test('world touch proxies remain at least 44px at constrained landscape and port
       await page.getByRole('button', { name: 'Pan battlefield left' }).click();
       await expect.poll(() => page.locator('#game-root').evaluate((root) => root.scrollLeft)).toBe(0);
     }
-    if (viewport.width <= 620) await tapWorld(page, 333, 147);
-    else await clickWorld(page, 333, 147);
+    if (viewport.width <= 620) await tapWorld(page, FIRST_PAINTED_PAD.x, FIRST_PAINTED_PAD.y);
+    else await clickWorld(page, FIRST_PAINTED_PAD.x, FIRST_PAINTED_PAD.y);
     await expect.poll(() => page.evaluate(() => window.__VERDANT_RIFT__?.selection)).toEqual({ kind: 'pad', padIndex: 0 });
     await page.getByRole('button', { name: /Thornwatch/ }).click();
     await expect.poll(() => page.evaluate(() => {
@@ -304,7 +328,7 @@ test('portrait focus pans, preserves touch mapping, recovers overview, and survi
   await expect.poll(() => page.locator('#game-root').evaluate((root) => root.scrollLeft)).toBeGreaterThan(200);
   await page.getByRole('button', { name: 'Pan battlefield left' }).click();
   await expect.poll(() => page.locator('#game-root').evaluate((root) => root.scrollLeft)).toBe(0);
-  await tapWorld(page, 333, 147);
+  await tapWorld(page, FIRST_PAINTED_PAD.x, FIRST_PAINTED_PAD.y);
   await expect.poll(() => page.evaluate(() => window.__VERDANT_RIFT__?.selection)).toEqual({ kind: 'pad', padIndex: 0 });
   await expect(page.getByText('TACTICAL PAUSE')).toBeVisible();
   expect(await page.evaluate(() => window.__VERDANT_RIFT__?.snapshot().phase)).toBe('paused');
@@ -350,7 +374,7 @@ test('portrait build and branch panels explicitly pause any canvas overlap and c
   await page.getByRole('button', { name: /ENTER THE RIFT/ }).click();
   await page.getByRole('button', { name: 'Pan battlefield left' }).click();
   await expect.poll(() => page.locator('#game-root').evaluate((root) => root.scrollLeft)).toBe(0);
-  await clickWorld(page, 333, 147);
+  await clickWorld(page, FIRST_PAINTED_PAD.x, FIRST_PAINTED_PAD.y);
   await expect.poll(() => page.evaluate(() => window.__VERDANT_RIFT_AUDIO__?.diagnostics().context)).toBe('suspended');
   await page.evaluate(() => {
     (window as typeof window & { __TACTICAL_PHASES__?: string[] }).__TACTICAL_PHASES__ = [];
@@ -385,7 +409,7 @@ test('portrait build and branch panels explicitly pause any canvas overlap and c
 
   // Reopen once to retain coverage of the explicit close affordance.
   await page.getByRole('button', { name: 'Pan battlefield left' }).click();
-  await clickWorld(page, 333, 147);
+  await clickWorld(page, FIRST_PAINTED_PAD.x, FIRST_PAINTED_PAD.y);
   await expect(page.getByText('TACTICAL PAUSE')).toBeVisible();
   await page.getByRole('button', { name: /Close tower controls/ }).click();
   expect(await page.evaluate(() => window.__VERDANT_RIFT__?.snapshot().phase)).toBe('playing');

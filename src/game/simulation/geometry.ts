@@ -20,7 +20,7 @@ export const PATH_POINTS: readonly Vec2[] = [
 ] as const;
 
 export const BUILD_PADS: readonly Vec2[] = [
-  { x: 333, y: 147 }, { x: 575, y: 327 }, { x: 1025, y: 207 }, { x: 1244, y: 263 },
+  { x: 394, y: 154 }, { x: 575, y: 327 }, { x: 1025, y: 207 }, { x: 1244, y: 263 },
   { x: 1238, y: 423 }, { x: 1375, y: 547 }, { x: 1287, y: 683 }, { x: 1117, y: 731 },
   { x: 906, y: 676 }, { x: 753, y: 659 }, { x: 462, y: 675 },
 ] as const;

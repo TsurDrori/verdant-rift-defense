@@ -110,13 +110,13 @@ try {
   await page.evaluate(() => {
     const controller = window.__VERDANT_RIFT__;
     const simulation = controller.simulation;
-    const boss = simulation.enemies.findLast((enemy) => enemy.alive);
-    if (boss) {
-      boss.type = 'bloomlord';
-      boss.hp = Number.MAX_SAFE_INTEGER;
-      boss.maxHp = Number.MAX_SAFE_INTEGER;
-      boss.progress = 0;
-    }
+    simulation.enemies = [];
+    simulation.waveIndex = 12;
+    simulation.spawnEnemy('bloomlord', 12);
+    const boss = simulation.enemies[0];
+    boss.hp = Number.MAX_SAFE_INTEGER;
+    boss.maxHp = Number.MAX_SAFE_INTEGER;
+    boss.progress = 0;
     controller.update(0);
     controller.dispatchEvent(new CustomEvent('game-event', {
       detail: {

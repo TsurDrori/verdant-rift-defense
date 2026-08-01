@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   advanceScoreModeGate,
   ADAPTIVE_ARRANGEMENT,
-  COMPOUND_CUE_RELATIONSHIPS,
   dbToGain,
   MUSIC_CUES,
   requestedScoreMode,
@@ -14,29 +13,21 @@ import {
   validateComposition,
 } from '../src/game/audio/ScoreComposition';
 
-describe('adaptive score composition', () => {
-  it('defines a complete validated horizontal score form', () => {
+describe('long-form score composition', () => {
+  it('defines three complete validated music programs', () => {
     expect(SCORE_STEPS).toBe(256);
-    expect(SCORE_FORM).toEqual([
-      'intro-calm',
-      'calm-loop',
-      'intro-pressure',
-      'active-loop',
-      'active-to-boss',
-      'boss-loop',
-      'boss-end',
-    ]);
-    expect(Object.keys(MUSIC_CUES)).toHaveLength(7);
+    expect(SCORE_FORM).toEqual(['menu-theme', 'battle-theme', 'boss-theme']);
+    expect(Object.keys(MUSIC_CUES)).toHaveLength(3);
     expect(validateComposition()).toEqual([]);
   });
 
-  it('provides distinct authored material for every encounter intensity', () => {
-    expect(ADAPTIVE_ARRANGEMENT.calm.loop).toBe('calm-loop');
-    expect(ADAPTIVE_ARRANGEMENT.active.loop).toBe('active-loop');
-    expect(ADAPTIVE_ARRANGEMENT.crisis.loop).toBe('active-loop');
-    expect(ADAPTIVE_ARRANGEMENT.boss.loop).toBe('boss-loop');
-    expect(ADAPTIVE_ARRANGEMENT.calm.firstEntrance).toBe('intro-calm');
-    expect(ADAPTIVE_ARRANGEMENT.active.firstEntrance).toBe('intro-pressure');
+  it('keeps one uninterrupted battle program and gives the boss distinct authored music', () => {
+    expect(ADAPTIVE_ARRANGEMENT.calm.loop).toBe('battle-theme');
+    expect(ADAPTIVE_ARRANGEMENT.active.loop).toBe('battle-theme');
+    expect(ADAPTIVE_ARRANGEMENT.crisis.loop).toBe('battle-theme');
+    expect(ADAPTIVE_ARRANGEMENT.boss.loop).toBe('boss-theme');
+    expect(MUSIC_CUES['menu-theme'].path).not.toBe(MUSIC_CUES['battle-theme'].path);
+    expect(MUSIC_CUES['boss-theme'].path).not.toBe(MUSIC_CUES['battle-theme'].path);
     expect(ADAPTIVE_ARRANGEMENT.crisis.percussionDensity)
       .toBeGreaterThan(ADAPTIVE_ARRANGEMENT.active.percussionDensity);
     expect(ADAPTIVE_ARRANGEMENT.boss.percussionDensity)
@@ -46,20 +37,16 @@ describe('adaptive score composition', () => {
   it('uses browser-native assets with measured, non-clipping gain staging', () => {
     for (const cue of Object.values(MUSIC_CUES)) {
       expect(cue.path).toMatch(/\.ogg$/);
-      expect(cue.duration).toBeGreaterThan(10);
-      expect(cue.measuredTruePeakDb).toBeLessThanOrEqual(-0.1);
+      expect(cue.duration).toBeGreaterThan(240);
+      expect(cue.measuredTruePeakDb).toBeLessThanOrEqual(-1);
       expect(dbToGain(cue.normalizationGainDb)).toBeGreaterThan(0);
       expect(dbToGain(cue.normalizationGainDb)).toBeLessThanOrEqual(1);
     }
-    expect(MUSIC_CUES['active-to-boss'].duration).toBe(MUSIC_CUES['active-loop'].duration);
+    expect(MUSIC_CUES['battle-theme'].duration).toBeGreaterThanOrEqual(300);
+    expect(MUSIC_CUES['boss-theme'].duration).toBeGreaterThanOrEqual(300);
   });
 
-  it('models compound files as phase-compatible alternatives and uses an eight-bar accent form', () => {
-    expect(COMPOUND_CUE_RELATIONSHIPS).toEqual([
-      { from: 'intro-calm', to: 'intro-pressure', sharedPrefixSeconds: MUSIC_CUES['intro-calm'].duration, purpose: 'intensity-extension' },
-      { from: 'active-loop', to: 'active-to-boss', sharedPrefixSeconds: MUSIC_CUES['active-loop'].duration, purpose: 'transition' },
-      { from: 'boss-loop', to: 'boss-end', sharedPrefixSeconds: MUSIC_CUES['boss-loop'].duration, purpose: 'ending' },
-    ]);
+  it('uses an eight-bar reinforcement form without replacing the battle composition', () => {
     expect(SCORE_ACCENT_FORM_STEPS).toBe(64);
     for (const mode of ['active', 'crisis', 'boss'] as const) {
       const blocks = Array.from({ length: 8 }, (_, block) => SCORE_ACCENT_PATTERNS[mode].percussion

@@ -33,6 +33,8 @@ export class BattleScene extends Phaser.Scene {
   private towerFocusRing?: Phaser.GameObjects.Ellipse;
   private gateValueText?: Phaser.GameObjects.Text;
   private activeBossTelegraphs = 0;
+  private bossPresent = false;
+  private bossArrivalAnnouncements = 0;
   private bossTelegraphCancel = new Map<string, () => void>();
   private friendlyAbilityFx = new Set<Phaser.GameObjects.Container | Phaser.GameObjects.Graphics>();
   private activeProjectileFx = 0;
@@ -162,6 +164,13 @@ export class BattleScene extends Phaser.Scene {
 
   private syncViews(): void {
     const snapshot = this.controller.snapshot();
+    const livingBoss = snapshot.enemies.find((enemy) => enemy.alive && enemy.type === 'bloomlord');
+    if (livingBoss && !this.bossPresent) {
+      this.bossPresent = true;
+      this.announceBossArrival(livingBoss.x, livingBoss.y);
+    } else if (!livingBoss) {
+      this.bossPresent = false;
+    }
     const livingEnemyCount = snapshot.enemies.reduce((count, enemy) => count + Number(enemy.alive), 0);
     // Per-sprite shader grades are visually useful at normal density but each
     // one requires an off-screen render pass. Dozens of simultaneous enemies
@@ -601,6 +610,7 @@ export class BattleScene extends Phaser.Scene {
     pendingLethals: number;
     deferredPresentationEvents: number;
     watchdogHealthy: boolean;
+    bossArrivalAnnouncements: number;
   } {
     const timing = this.controller.simulation.getTimingDiagnostics();
     const presentation = this.controller.presentationDiagnostics();
@@ -629,7 +639,52 @@ export class BattleScene extends Phaser.Scene {
       deferredPresentationEvents: presentation.deferredEvents,
       watchdogHealthy: simulationDebtMs <= 500.01 && this.activeProjectileFx <= 32
         && presentation.pendingLethals <= 32 && tweens < 500 && timers < 500,
+      bossArrivalAnnouncements: this.bossArrivalAnnouncements,
     };
+  }
+
+  private announceBossArrival(x: number, y: number): void {
+    this.bossArrivalAnnouncements += 1;
+    const reducedMotion = document.documentElement.classList.contains('reduce-motion');
+    this.cameras.main.flash(reducedMotion ? 120 : 260, 102, 22, 28, false);
+    if (!reducedMotion) this.cameras.main.shake(920, 0.012, true);
+
+    const shadow = this.add.ellipse(x, y + 18, 42, 16, 0x19070c, 0.72)
+      .setStrokeStyle(3, 0xff6558, 0.75).setDepth(36).setBlendMode(Phaser.BlendModes.MULTIPLY);
+    const shockwave = this.add.circle(x, y, 24, 0x6a1027, 0.16)
+      .setStrokeStyle(6, 0xff765d, 0.92).setDepth(116).setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: [shadow, shockwave],
+      scaleX: reducedMotion ? 2.2 : 5.8,
+      scaleY: reducedMotion ? 1.7 : 4.2,
+      alpha: 0,
+      duration: reducedMotion ? 260 : 920,
+      ease: 'Cubic.Out',
+      onComplete: () => { shadow.destroy(); shockwave.destroy(); },
+    });
+
+    const banner = this.add.container(800, 178).setDepth(210).setAlpha(0);
+    const plate = this.add.rectangle(0, 0, 470, 72, 0x160b10, 0.9)
+      .setStrokeStyle(2, 0xe9b66a, 0.82);
+    const title = this.add.text(0, -7, 'THE HOLLOW BLOOM', {
+      fontFamily: 'Georgia, serif', fontSize: '31px', fontStyle: 'bold', color: '#ffe2a1',
+      stroke: '#2b080c', strokeThickness: 6, letterSpacing: 3,
+    }).setOrigin(0.5);
+    const warning = this.add.text(0, 24, 'SOVEREIGN OF THE POISONED CROSSING', {
+      fontFamily: 'Trebuchet MS, sans-serif', fontSize: '11px', fontStyle: 'bold', color: '#ff8972',
+      letterSpacing: 2,
+    }).setOrigin(0.5);
+    banner.add([plate, title, warning]);
+    this.tweens.add({
+      targets: banner,
+      alpha: { from: 0, to: 1 },
+      scaleX: { from: 0.84, to: 1 },
+      duration: reducedMotion ? 120 : 300,
+      ease: 'Back.Out',
+      hold: reducedMotion ? 520 : 1050,
+      yoyo: true,
+      onComplete: () => banner.destroy(),
+    });
   }
 
   private materialImpact(x: number, y: number, style: ProjectileStyle, color: number, radius: number): void {

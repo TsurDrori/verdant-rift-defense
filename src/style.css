@@ -233,6 +233,9 @@ html.tactical-context-pause .view-controls {
 .primary-button:hover { filter:brightness(1.16); transform:translateY(-2px); }
 .primary-button span { margin-left:10px; font-size:16px; }
 .controls-copy { display:block; margin-top:14px; color:#abc1b5; font-size:var(--type-caption); line-height:1.4; letter-spacing:.15px; }
+.music-credit { display:block; margin:6px auto 0; color:#849e92; font-size:max(11px,var(--type-hint)); line-height:1.35; }
+.music-credit a { color:#a9cbbb; text-underline-offset:2px; }
+.music-credit a:hover,.music-credit a:focus-visible { color:#f4dda7; }
 .difficulty-picker { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; margin:-15px 0 18px; }
 .difficulty-picker button { min-height:58px; display:grid; gap:3px; padding:9px; border:1px solid rgba(224,204,145,.24); border-radius:6px; color:#c1d2c8; background:rgba(3,16,14,.46); cursor:pointer; }
 .difficulty-picker button.is-selected { border-color:#d5bc66; color:#f8e7b0; background:linear-gradient(145deg,rgba(91,109,54,.55),rgba(18,73,61,.66)); box-shadow:inset 0 0 14px rgba(126,228,187,.09); }
@@ -433,6 +436,7 @@ html.tactical-context-pause .view-controls {
   .primary-button { min-height:48px; }
   .insight-node { min-height:58px; }
   .controls-copy { display:none; }
+  .music-credit { margin-top:4px; font-size:11px; }
   .pause-card { width:min(700px,calc(100vw - 16px)); max-height:calc(100vh - 12px); padding:13px 18px; overflow:auto; }
   .pause-card h2 { margin:3px 0 12px; font-size:22px; }
   .settings-row { margin:0 0 10px; }
@@ -520,5 +524,6 @@ html.tactical-context-pause .view-controls {
   .insight-board > div { grid-template-columns:1fr; }
   .insight-node { min-height:66px; }
   .controls-copy { display:none; }
+  .music-credit { margin-top:8px; }
   .pause-card,.end-card { max-height:calc(100vh - 16px); padding:28px 20px; overflow:auto; }
 }

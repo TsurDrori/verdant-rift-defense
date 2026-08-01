@@ -32,10 +32,13 @@ test('owns one measured adaptive engine with no parallel Phaser context', async 
   expect(result.contexts).toBe(1);
   expect(result.diagnostic.schedulerCount).toBe(1);
   expect(result.diagnostic.ambienceSources).toBe(2);
-  expect(result.diagnostic.decodedAssets).toBe(55);
+  expect(result.diagnostic.decodedAssets).toBe(48);
+  expect(result.diagnostic.streamedMusicAssets).toBe(3);
+  expect(result.diagnostic.decodedMusicBytes).toBe(0);
   expect(result.diagnostic.assetsFailed).toBe(0);
   expect(result.diagnostic.midiPlayback).toBe(false);
-  expect(result.diagnostic.currentCue).toBe('intro-calm');
+  expect(result.diagnostic.currentCue).toBe('battle-theme');
+  expect(result.diagnostic.transport.currentDuration).toBeGreaterThanOrEqual(300);
 });
 
 test('keeps the score clock independent of 1x and 2x simulation speed', async ({ page }) => {
@@ -55,61 +58,58 @@ test('keeps the score clock independent of 1x and 2x simulation speed', async ({
   expect(Math.abs(at1x - at2x)).toBeLessThanOrEqual(2);
 });
 
-test('re-sequences calm, active, crisis, and boss material without MIDI', async ({ page }) => {
-  await enterAndLoad(page);
-  expect(await page.evaluate(() => window.__VERDANT_RIFT_AUDIO__!.diagnostics().mode)).toBe('calm');
+test('uses separate long-form menu, battle, and boss compositions without MIDI', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: /wanderer/i }).click();
+  await expect.poll(() => page.evaluate(() => window.__VERDANT_RIFT_AUDIO__?.diagnostics().assetsLoaded), { timeout: 20_000 }).toBe(true);
+  const menu = await page.evaluate(() => window.__VERDANT_RIFT_AUDIO__!.diagnostics());
+  expect(menu.currentCue).toBe('menu-theme');
+  expect(menu.transport.currentDuration).toBeGreaterThan(240);
 
-  await page.evaluate(() => window.__VERDANT_RIFT__!.startWave());
-  await expect.poll(() => page.evaluate(() => window.__VERDANT_RIFT_AUDIO__!.diagnostics().mode)).toBe('active');
-  await expect.poll(() => page.evaluate(() => window.__VERDANT_RIFT_AUDIO__!.diagnostics().currentCue)).toBe('intro-pressure');
-
-  await page.evaluate(() => {
-    const simulation = window.__VERDANT_RIFT__!.simulation as unknown as { lives: number };
-    simulation.lives = 1;
-    window.__VERDANT_RIFT__!.update(0);
-  });
-  await expect.poll(() => page.evaluate(() => window.__VERDANT_RIFT_AUDIO__!.diagnostics().mode)).toBe('crisis');
-  await page.evaluate(() => {
-    const director = window.__VERDANT_RIFT_AUDIO__ as unknown as {
-      currentMusic?: { source: AudioBufferSourceNode };
-    };
-    director.currentMusic?.source.stop();
-  });
-  await expect.poll(() => page.evaluate(() => window.__VERDANT_RIFT_AUDIO__!.diagnostics().currentCue)).toBe('active-loop');
-
-  await page.evaluate(() => {
-    const simulation = window.__VERDANT_RIFT__!.simulation as unknown as {
-      enemies: Array<{ alive: boolean; type: string }>;
-    };
-    simulation.enemies[0]!.type = 'bloomlord';
-    window.__VERDANT_RIFT__!.update(0);
-  });
-  await expect.poll(() => page.evaluate(() => window.__VERDANT_RIFT_AUDIO__!.diagnostics().mode)).toBe('boss');
-  await expect.poll(() => page.evaluate(() => window.__VERDANT_RIFT_AUDIO__!.diagnostics().currentCue)).toBe('active-to-boss');
-});
-
-test('phase-transfers compound cues and debounces rapid pressure flaps without restarting phrases', async ({ page }) => {
-  await enterAndLoad(page);
-  await page.evaluate(() => window.__VERDANT_RIFT__!.startWave());
-  await expect.poll(() => page.evaluate(() => window.__VERDANT_RIFT_AUDIO__!.diagnostics().mode)).toBe('active');
-  await expect.poll(() => page.evaluate(() => window.__VERDANT_RIFT_AUDIO__!.diagnostics().currentCue)).toBe('intro-pressure');
-
-  const transferred = await page.evaluate(() => window.__VERDANT_RIFT_AUDIO__!.diagnostics().transport);
-  expect(transferred.phaseTransfers).toBe(1);
-  expect(transferred.midPhraseRestarts).toBe(0);
-  expect(transferred.recent.some((event) => event.kind === 'phase-transfer'
-    && event.fromCue === 'intro-calm'
-    && event.cue === 'intro-pressure'
-    // Decode speed changes how long the intro has played before the wave is
-    // callable. The contract is a non-zero phase transfer, not an arbitrary
-    // wall-clock delay on a particular machine.
-    && (event.offset ?? 0) > .1)).toBe(true);
+  await page.getByRole('button', { name: /enter the rift/i }).click();
+  await expect.poll(() => page.evaluate(() => window.__VERDANT_RIFT_AUDIO__!.diagnostics().currentCue)).toBe('battle-theme');
+  const battle = await page.evaluate(() => window.__VERDANT_RIFT_AUDIO__!.diagnostics());
+  expect(battle.transport.currentDuration).toBeGreaterThanOrEqual(300);
 
   await page.evaluate(() => {
     const controller = window.__VERDANT_RIFT__!;
-    const simulation = controller.simulation as unknown as { enemies: Array<{ uid: number; alive: boolean; type: string }> };
-    const seed = simulation.enemies.find((enemy) => enemy.alive)!;
-    simulation.enemies = Array.from({ length: 20 }, (_, index) => ({ ...seed, uid: 90_000 + index, alive: true }));
+    const simulation = controller.simulation as unknown as {
+      waveIndex: number;
+      spawnEnemy(type: 'bloomlord', wave: number): void;
+    };
+    simulation.waveIndex = 12;
+    simulation.spawnEnemy('bloomlord', 12);
+    controller.update(0);
+  });
+  await expect.poll(() => page.evaluate(() => window.__VERDANT_RIFT_AUDIO__!.diagnostics().mode)).toBe('boss');
+  await expect.poll(() => page.evaluate(() => window.__VERDANT_RIFT_AUDIO__!.diagnostics().currentCue)).toBe('boss-theme');
+  await expect.poll(() => page.evaluate(() => {
+    const scene = window.__VERDANT_RIFT_GAME__!.scene.getScene('battle') as unknown as {
+      getPerformanceDiagnostics(): { bossArrivalAnnouncements: number };
+    };
+    return scene.getPerformanceDiagnostics().bossArrivalAnnouncements;
+  })).toBe(1);
+  const boss = await page.evaluate(() => window.__VERDANT_RIFT_AUDIO__!.diagnostics());
+  expect(boss.transport.currentDuration).toBeGreaterThanOrEqual(300);
+  expect(boss.transport.programChanges).toBe(2);
+  expect(boss.transport.midPhraseRestarts).toBe(0);
+  expect(boss.criticalCueCounts.boss).toBeGreaterThanOrEqual(1);
+});
+
+test('pressure changes never restart the five-minute battle program', async ({ page }) => {
+  await enterAndLoad(page);
+  const before = await page.evaluate(() => window.__VERDANT_RIFT_AUDIO__!.diagnostics());
+  expect(before.currentCue).toBe('battle-theme');
+
+  await page.evaluate(() => {
+    const controller = window.__VERDANT_RIFT__!;
+    const simulation = controller.simulation as unknown as {
+      enemies: Array<{ uid: number; alive: boolean; type: string }>;
+      waveIndex: number;
+      spawnEnemy(type: 'skitter', wave: number): void;
+    };
+    simulation.waveIndex = 1;
+    for (let index = 0; index < 20; index += 1) simulation.spawnEnemy('skitter', 1);
     controller.update(0);
   });
   await page.waitForTimeout(240);
@@ -122,9 +122,11 @@ test('phase-transfers compound cues and debounces rapid pressure flaps without r
   await page.waitForTimeout(240);
   await page.evaluate(() => {
     const controller = window.__VERDANT_RIFT__!;
-    const simulation = controller.simulation as unknown as { enemies: Array<{ uid: number; alive: boolean; type: string }> };
-    const seed = simulation.enemies[0]!;
-    simulation.enemies.push({ ...seed, uid: 90_020, alive: true });
+    const simulation = controller.simulation as unknown as {
+      enemies: Array<{ uid: number; alive: boolean; type: string }>;
+      spawnEnemy(type: 'skitter', wave: number): void;
+    };
+    simulation.spawnEnemy('skitter', 1);
     controller.update(0);
   });
   await page.waitForTimeout(240);
@@ -136,59 +138,43 @@ test('phase-transfers compound cues and debounces rapid pressure flaps without r
   });
 
   const stable = await page.evaluate(() => window.__VERDANT_RIFT_AUDIO__!.diagnostics());
-  expect(stable.mode).toBe('active');
-  expect(stable.transport.modeChanges).toBe(1);
+  expect(stable.currentCue).toBe('battle-theme');
+  expect(stable.transport.sourceStarts).toBe(before.transport.sourceStarts);
+  expect(stable.transport.programChanges).toBe(before.transport.programChanges);
   expect(stable.transport.midPhraseRestarts).toBe(0);
+});
 
-  const boundaryQueued = await page.evaluate(() => {
+test('keeps battle music alive while a cold boss stream buffers', async ({ page }) => {
+  await enterAndLoad(page);
+  const beforeStops = await page.evaluate(() => window.__VERDANT_RIFT_AUDIO__!.diagnostics().transport.sourceStops);
+  await page.evaluate(() => {
+    const nativePlay = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function playWithColdBossBuffer(): Promise<void> {
+      if (this.src.includes('boss-theme.ogg')) {
+        return new Promise((resolve) => window.setTimeout(() => {
+          this.dispatchEvent(new Event('playing'));
+          resolve();
+        }, 450));
+      }
+      return nativePlay.call(this);
+    };
     const controller = window.__VERDANT_RIFT__!;
     const simulation = controller.simulation as unknown as {
-      enemies: unknown[];
-      spawnQueue: unknown[];
-      waveActive: boolean;
-      nextWaveReady: boolean;
-      intermission: number;
+      waveIndex: number;
+      spawnEnemy(type: 'bloomlord', wave: number): void;
     };
-    simulation.enemies = [];
-    simulation.spawnQueue = [];
-    simulation.waveActive = false;
-    simulation.nextWaveReady = true;
-    simulation.intermission = 999;
-    const director = window.__VERDANT_RIFT_AUDIO__ as unknown as {
-      context: AudioContext;
-      modeGate: { modeSince: number; candidate: string; candidateSince: number };
-      diagnostics(): ReturnType<NonNullable<typeof window.__VERDANT_RIFT_AUDIO__>['diagnostics']>;
-    };
-    director.modeGate.modeSince = director.context.currentTime - 10.1;
-    director.modeGate.candidate = 'calm';
-    director.modeGate.candidateSince = director.context.currentTime - 10.1;
-    // The state event synchronously advances the gate and queues the safe
-    // boundary. Capture that transient contract in this same browser task: a
-    // software-rendered CI host may legitimately cross the boundary before a
-    // second Playwright round-trip, at which point `pending` is already gone.
+    simulation.waveIndex = 12;
+    simulation.spawnEnemy('bloomlord', 12);
     controller.update(0);
-    return director.diagnostics();
   });
-  expect(boundaryQueued.mode).toBe('calm');
-  expect(boundaryQueued.transport.pending?.cue).toBe('calm-loop');
-  expect(boundaryQueued.transport.pending?.in).toBeGreaterThan(0);
-  // A boundary less than 350 ms away is deliberately skipped so a 1.15 s
-  // crossfade is not launched almost immediately. The longest valid wait is
-  // therefore one 16-step grid plus that exact safety window.
-  expect(boundaryQueued.transport.pending?.in).toBeLessThanOrEqual(60 / 82 / 2 * 16 + .35);
-  expect(boundaryQueued.transport.midPhraseRestarts).toBe(0);
 
-  await page.evaluate(() => {
-    const director = window.__VERDANT_RIFT_AUDIO__ as unknown as {
-      context: AudioContext;
-      pendingMusicTransition?: { at: number };
-    };
-    if (director.pendingMusicTransition) director.pendingMusicTransition.at = director.context.currentTime + .06;
-  });
-  await expect.poll(() => page.evaluate(() => window.__VERDANT_RIFT_AUDIO__!.diagnostics().currentCue)).toBe('calm-loop');
-  const boundaryCommitted = await page.evaluate(() => window.__VERDANT_RIFT_AUDIO__!.diagnostics().transport);
-  expect(boundaryCommitted.safeTransitions).toBe(1);
-  expect(boundaryCommitted.midPhraseRestarts).toBe(0);
+  await expect.poll(() => page.evaluate(() => window.__VERDANT_RIFT_AUDIO__!.diagnostics().currentCue)).toBe('boss-theme');
+  await page.waitForTimeout(180);
+  expect(await page.evaluate(() => window.__VERDANT_RIFT_AUDIO__!.diagnostics().transport.sourceStops)).toBe(beforeStops);
+  await expect.poll(
+    () => page.evaluate(() => window.__VERDANT_RIFT_AUDIO__!.diagnostics().transport.sourceStops),
+    { timeout: 2_000 },
+  ).toBe(beforeStops + 1);
 });
 
 test('reserves tactical cues when 48 ordinary voices are saturated', async ({ page }) => {

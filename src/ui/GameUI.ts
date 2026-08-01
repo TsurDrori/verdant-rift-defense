@@ -4,6 +4,7 @@ import type { HeroId, TowerBranch, TowerId } from '../game/content/types';
 import { WAVES } from '../game/content/waves';
 import type { GameEvent, HeroState, TowerState } from '../game/simulation/state';
 import { BUILD_PADS } from '../game/simulation/geometry';
+import { assetUrl } from '../game/assets/url';
 import type { DifficultyId } from '../game/simulation/state';
 import { GameController } from '../phaser/adapters/GameController';
 
@@ -136,6 +137,7 @@ export class GameUI {
           <section class="insight-board ${this.insight > 0 ? '' : 'is-locked'}" data-insight-board>${this.insightMarkup()}</section>
           <button class="primary-button" data-action="begin">ENTER THE RIFT <span>→</span></button>
           <small class="controls-copy">Mouse / touch to command · Q / E cycles foundations · Z / X selects champions · WASD moves · 1 / 2 smart-casts</small>
+          <small class="music-credit">Music: “Angevin”, “Noble Race” &amp; “Killers” by <a href="https://incompetech.com/" target="_blank" rel="noreferrer">Kevin MacLeod</a> · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a></small>
         </div>
       </div>
 
@@ -534,7 +536,7 @@ export class GameUI {
         return `<i class="hero-milestone ${hero.level >= level ? 'is-earned' : ''}" title="${label}" aria-label="${label}"></i>`;
       }).join('');
       return `<article class="hero-card panel ${selected ? 'is-selected' : ''} ${hero.alive ? '' : 'is-down'}" data-hero-card="${hero.id}" style="--hero:#${hero.accent.toString(16).padStart(6, '0')}">
-        <button class="hero-portrait" data-action="hero" data-hero="${hero.id}" aria-label="Select ${hero.name} • ${hero.alive ? `${Math.ceil(hero.hp)} health` : `respawns in ${respawn}` }" title="${hero.name}"><img src="/assets/heroes/${hero.id}.png" alt="" draggable="false"><i class="hero-charge" style="--charge:${charge}"></i><span class="hero-health" style="--health:${health}"></span>${hero.alive ? '' : `<strong class="hero-respawn">${respawn}</strong>`}</button>
+        <button class="hero-portrait" data-action="hero" data-hero="${hero.id}" aria-label="Select ${hero.name} • ${hero.alive ? `${Math.ceil(hero.hp)} health` : `respawns in ${respawn}` }" title="${hero.name}"><img src="${assetUrl(`assets/heroes/${hero.id}.png`)}" alt="" draggable="false"><i class="hero-charge" style="--charge:${charge}"></i><span class="hero-health" style="--health:${health}"></span>${hero.alive ? '' : `<strong class="hero-respawn">${respawn}</strong>`}</button>
         <div class="hero-copy"><small><span class="hero-rank-label">CHAMPION ${index + 1} • </span><strong data-hero-level>LV ${hero.level}</strong></small><b>${hero.name.split(' • ')[0]}</b><span data-hero-hp>HP ${Math.ceil(hero.hp)} / ${Math.ceil(hero.maxHp)}</span><div class="hero-xp-row"><span data-hero-xp>${maxLevel ? `${hero.xp} / ${hero.xp} MASTERED` : `${xp.current} / ${xp.required} XP`}</span><em>${milestonePips}</em></div><div class="hero-xp-track" role="progressbar" aria-label="${hero.name} experience" aria-valuemin="0" aria-valuemax="${xp.required}" aria-valuenow="${xp.current}"><i style="--xp:${xp.ratio}"></i></div></div>
         <button class="ability-button ${this.controller.armedAbility === hero.id ? 'is-armed' : ''}" data-action="ability" data-hero="${hero.id}" ${cooldown > 0 || !hero.alive ? 'disabled' : ''} aria-label="${hero.alive ? `Use ${hero.name} ultimate` : `${hero.name} respawns in ${respawn}`}">
           <span>${hero.id === 'kael' ? '❈' : '✧'}</span><b>${hero.alive ? (cooldown > 0 ? cooldown : index + 1) : respawn}</b>
