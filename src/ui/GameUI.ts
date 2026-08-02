@@ -5,8 +5,11 @@ import { WAVES } from '../game/content/waves';
 import type { GameEvent, HeroState, TowerState } from '../game/simulation/state';
 import { BUILD_PADS } from '../game/simulation/geometry';
 import { assetUrl } from '../game/assets/url';
+import { CampaignProfileStore } from '../game/campaign/CampaignProfile';
+import { heroById, stageById, type CampaignStageId, type InsightUpgradeId, type MenuHeroId } from '../game/campaign/content';
 import type { DifficultyId } from '../game/simulation/state';
 import { GameController } from '../phaser/adapters/GameController';
+import { renderFrontEndContent, renderFrontEndFrame, type FrontEndRenderState, type FrontEndRoute } from './FrontEndShell';
 
 const towerGlyph: Record<TowerId, string> = { thorn: '➶', ember: '✹', aegis: '♜', astral: '✦' };
 
@@ -16,12 +19,6 @@ export function starRating(victory: boolean, lives: number, startingLives: numbe
   return integrity >= 0.9 ? '★★★' : integrity >= 0.5 ? '★★☆' : '★☆☆';
 }
 
-const insightUpgrades = {
-  treasury: { glyph: '◆', name: 'Sunseed Tithe', effect: '+25 starting sunshards' },
-  command: { glyph: '✦', name: 'Twin Oath', effect: 'Hero commands recharge 10% faster' },
-  gate: { glyph: '⬟', name: 'Living Gate', effect: '+2 starting gate integrity' },
-} as const;
-type InsightUpgradeId = keyof typeof insightUpgrades;
 type AudioChannel = 'master' | 'music' | 'sfx' | 'ambience';
 type AudioMix = Record<AudioChannel, number>;
 
@@ -39,13 +36,6 @@ function storedAudioMix(): AudioMix {
   }
 }
 
-function storedInsightLoadout(): InsightUpgradeId[] {
-  try {
-    const value = JSON.parse(localStorage.getItem('verdant-rift:insight-loadout') ?? '[]');
-    return Array.isArray(value) ? value.filter((id): id is InsightUpgradeId => id in insightUpgrades) : [];
-  } catch { return []; }
-}
-
 export class GameUI {
   private controller: GameController;
   private root: HTMLElement;
@@ -56,8 +46,9 @@ export class GameUI {
   private lastHeroDock = '';
   private lastBoss = '';
   private pendingGold = 0;
-  private insight = Number(localStorage.getItem('verdant-rift:insight') ?? 0);
-  private insightLoadout = storedInsightLoadout();
+  private readonly campaign = new CampaignProfileStore();
+  private frontEndRoute: FrontEndRoute = 'campaign';
+  private selectedMenuHero: MenuHeroId = 'kael';
   private audioMix = storedAudioMix();
   private muted = localStorage.getItem('verdant-rift:muted') === 'true';
   private highContrast = localStorage.getItem('verdant-rift:contrast') === 'true';
@@ -72,8 +63,7 @@ export class GameUI {
   constructor(root: HTMLElement, controller: GameController) {
     this.root = root;
     this.controller = controller;
-    this.insightLoadout = this.insightLoadout.slice(0, this.insight);
-    this.controller.setInsightLoadout(this.insightLoadout);
+    this.controller.setInsightLoadout(this.campaign.snapshot().insightLoadout);
     this.root.innerHTML = this.shell();
     this.syncModalAccessibility();
     document.documentElement.classList.toggle('high-contrast', this.highContrast);
@@ -83,6 +73,11 @@ export class GameUI {
     controller.addEventListener('state', () => this.scheduleRender());
     controller.addEventListener('game-event', ((event: CustomEvent<GameEvent>) => this.onGameEvent(event.detail)) as EventListener);
     controller.addEventListener('presentation-event', ((event: CustomEvent<GameEvent>) => this.onPresentationEvent(event.detail)) as EventListener);
+    controller.addEventListener('runtime-ready', () => this.revealRuntimeReady());
+    this.campaign.addEventListener('change', () => {
+      this.controller.setInsightLoadout(this.campaign.snapshot().insightLoadout);
+      this.renderFrontEnd();
+    });
     this.render();
   }
 
@@ -119,27 +114,7 @@ export class GameUI {
         <div class="toast-stack" data-toast-stack></div>
       </div>
 
-      <div class="modal-layer is-open" data-briefing role="dialog" aria-modal="true" aria-labelledby="briefing-title" tabindex="-1">
-        <div class="briefing-card panel-ornate">
-          <div class="kicker">CHAPTER I • THE SUNKEN WAY</div>
-          <h1 id="briefing-title">Hold the Verdant Rift</h1>
-          <p class="lead">The Hollow Bloom has poisoned the old crossing. Place your alliance on the stone circles, command both champions, and keep the golden gate alive.</p>
-          <div class="briefing-grid">
-            <div><span class="brief-icon">◉</span><b>Build & specialize</b><small>Click a foundation. Every tower branches at rank III.</small></div>
-            <div><span class="brief-icon">♜</span><b>Command two heroes</b><small>Select a champion, then click the field to reposition.</small></div>
-            <div><span class="brief-icon">⚡</span><b>Call waves early</b><small>Trade preparation time for bonus sunshards.</small></div>
-          </div>
-          <div class="difficulty-picker" role="group" aria-label="Difficulty">
-            <button data-action="difficulty" data-difficulty="wanderer"><b>Wanderer</b><small>25 gate • forgiving foes</small></button>
-            <button class="is-selected" data-action="difficulty" data-difficulty="warden"><b>Warden</b><small>20 gate • intended tactics</small></button>
-            <button data-action="difficulty" data-difficulty="mythic"><b>Mythic</b><small>15 gate • relentless pressure</small></button>
-          </div>
-          <section class="insight-board ${this.insight > 0 ? '' : 'is-locked'}" data-insight-board>${this.insightMarkup()}</section>
-          <button class="primary-button" data-action="begin">ENTER THE RIFT <span>→</span></button>
-          <small class="controls-copy">Mouse / touch to command · Q / E cycles foundations · Z / X selects champions · WASD moves · 1 / 2 smart-casts</small>
-          <small class="music-credit">Music: “Angevin”, “Noble Race” &amp; “Killers” by <a href="https://incompetech.com/" target="_blank" rel="noreferrer">Kevin MacLeod</a> · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a></small>
-        </div>
-      </div>
+      ${renderFrontEndFrame(this.frontEndState())}
 
       <div class="modal-layer" data-pause-modal role="dialog" aria-modal="true" aria-labelledby="pause-title" tabindex="-1">
         <div class="pause-card panel-ornate"><div class="kicker">BATTLE SUSPENDED</div><h2 id="pause-title">The forest holds its breath.</h2><div class="settings-row" aria-label="Accessibility settings"><button data-action="mute"><span>Sound</span><b data-mute-label>${this.muted ? 'OFF' : 'ON'}</b></button><button data-action="contrast"><span>Contrast</span><b data-contrast-label>${this.highContrast ? 'HIGH' : 'STANDARD'}</b></button><button data-action="motion"><span>Motion</span><b data-motion-label>${this.reducedMotion ? 'REDUCED' : 'FULL'}</b></button></div>${this.audioMixerMarkup()}<button class="primary-button" data-action="pause">RETURN TO BATTLE</button></div>
@@ -160,12 +135,36 @@ export class GameUI {
       if (!button) return;
       const action = button.dataset.action;
       const towerUid = button.dataset.towerUid ? Number(button.dataset.towerUid) : undefined;
-      if (action === 'begin') {
+      if (action === 'menu-route') {
+        const route = button.dataset.route as FrontEndRoute;
+        if (['campaign', 'heroes', 'upgrades', 'codex', 'settings'].includes(route)) {
+          this.frontEndRoute = route;
+          this.renderFrontEnd();
+          this.root.querySelector<HTMLElement>('[data-front-end-content] h1')?.focus({ preventScroll: true });
+        }
+      }
+      else if (action === 'menu-stage') {
+        const stage = stageById(button.dataset.stage as CampaignStageId);
+        this.campaign.selectStage(stage.id);
+        this.root.querySelector<HTMLElement>(`[data-stage="${stage.id}"]`)?.focus({ preventScroll: true });
+      }
+      else if (action === 'menu-hero') {
+        this.selectedMenuHero = heroById(button.dataset.menuHero as MenuHeroId).id;
+        this.renderFrontEnd();
+        this.root.querySelector<HTMLElement>(`[data-menu-hero="${this.selectedMenuHero}"]`)?.focus({ preventScroll: true });
+      }
+      else if (action === 'begin') {
+        const stage = stageById(this.campaign.snapshot().selectedStageId);
+        if (!stage.playable || !this.controller.isRuntimeReady()) return;
         this.controller.begin();
         this.root.querySelector('[data-briefing]')?.classList.remove('is-open');
         this.syncModalAccessibility();
         (document.activeElement as HTMLElement | null)?.blur();
-        requestAnimationFrame(() => { document.scrollingElement?.scrollTo(0, 0); document.querySelector<HTMLElement>('#app')?.scrollTo(0, 0); this.applyViewMode(false); });
+        // Establish portrait world coordinates before the next pointer can be
+        // delivered. Deferring all centering by multiple animation frames let
+        // a fast pan/build gesture race against the initial scroll position.
+        this.applyViewMode(false);
+        requestAnimationFrame(() => { document.scrollingElement?.scrollTo(0, 0); document.querySelector<HTMLElement>('#app')?.scrollTo(0, 0); });
       }
       else if (action === 'pause') {
         // A portrait context panel owns the pause it opened. Treat the global
@@ -193,12 +192,10 @@ export class GameUI {
       }
       else if (action === 'insight') {
         const id = button.dataset.upgrade as InsightUpgradeId;
-        const selected = this.insightLoadout.includes(id);
-        if (selected) this.insightLoadout = this.insightLoadout.filter((candidate) => candidate !== id);
-        else if (this.insightLoadout.length < this.insight) this.insightLoadout = [...this.insightLoadout, id];
-        this.persistInsightLoadout();
+        this.campaign.toggleInsight(id);
+        this.root.querySelector<HTMLElement>(`[data-upgrade="${id}"]`)?.focus({ preventScroll: true });
       }
-      else if (action === 'insight-reset') { this.insightLoadout = []; this.persistInsightLoadout(); }
+      else if (action === 'insight-reset') this.campaign.resetInsight();
       else if (action === 'restart') window.location.reload();
       else if (action === 'mute') {
         this.muted = !this.muted; localStorage.setItem('verdant-rift:muted', String(this.muted)); this.setText('[data-mute-label]', this.muted ? 'OFF' : 'ON');
@@ -268,7 +265,10 @@ export class GameUI {
     this.setText('[data-view-hint]', this.viewMode === 'focus' ? 'FULL MAP' : 'TACTICAL ZOOM');
     const toggle = this.root.querySelector<HTMLElement>('[data-action="view-mode"]');
     toggle?.setAttribute('aria-label', this.viewMode === 'focus' ? 'Show battlefield overview' : 'Focus battlefield for touch play');
-    if (focused) requestAnimationFrame(() => requestAnimationFrame(() => this.centerFocusedWorld(this.focusWorldX, smooth)));
+    if (focused) {
+      if (smooth) requestAnimationFrame(() => requestAnimationFrame(() => this.centerFocusedWorld(this.focusWorldX, true)));
+      else this.centerFocusedWorld(this.focusWorldX, false);
+    }
     else document.querySelector<HTMLElement>('#game-root')?.scrollTo({ left: 0, behavior: 'auto' });
   }
 
@@ -283,7 +283,16 @@ export class GameUI {
     if (!this.portraitLayout) return;
     if (this.viewMode !== 'focus') { this.setViewMode('focus'); return; }
     const root = document.querySelector<HTMLElement>('#game-root');
-    root?.scrollBy({ left: direction * Math.max(220, root.clientWidth * 0.68), behavior: this.reducedMotion ? 'auto' : 'smooth' });
+    if (!root) return;
+    // Arrow commands are discrete tactical steps. Snap to the resolved offset
+    // so a follow-up tap cannot race a still-moving canvas and command the
+    // wrong world coordinate; ornamental easing is reserved for mode changes.
+    const target = root.scrollLeft + direction * Math.max(220, root.clientWidth * 0.68);
+    const inlineScrollBehavior = root.style.scrollBehavior;
+    root.style.scrollBehavior = 'auto';
+    root.scrollLeft = Math.max(0, Math.min(root.scrollWidth - root.clientWidth, target));
+    root.style.scrollBehavior = inlineScrollBehavior;
+    this.captureFocusedWorld();
   }
 
   private captureFocusedWorld(): void {
@@ -353,7 +362,7 @@ export class GameUI {
 
   private focusModal(modal: HTMLElement): void {
     const preferred = modal.matches('[data-briefing]')
-      ? modal.querySelector<HTMLElement>('[data-action="difficulty"].is-selected')
+      ? modal.querySelector<HTMLElement>('[data-action="difficulty"].is-selected, [data-action="menu-route"].is-selected')
       : modal.querySelector<HTMLElement>('.primary-button, button:not(:disabled), input:not(:disabled)');
     (preferred ?? modal).focus();
   }
@@ -387,6 +396,15 @@ export class GameUI {
 
   private closeContextPanel(): void {
     this.controller.clearSelection();
+    // Release DOM/canvas ownership synchronously. Waiting for the memoized
+    // render pass could leave `context-panel-open` on <html> for one frame,
+    // swallowing a fast follow-up tower tap even though the panel was gone.
+    const panel = this.root.querySelector<HTMLElement>('[data-selection-panel]');
+    panel?.classList.remove('is-visible');
+    if (panel) panel.innerHTML = '';
+    this.lastSelection = '';
+    document.documentElement.classList.remove('context-panel-open');
+    this.syncPanelScrollAffordance();
     this.resumeContextPause();
   }
 
@@ -415,12 +433,40 @@ export class GameUI {
     return '<div class="context-pause-banner"><span>Ⅱ</span><b>TACTICAL PAUSE</b><small>Close to resume battle</small></div>';
   }
 
-  private insightMarkup(): string {
-    if (this.insight <= 0) {
-      return '<header><span><small>CAMPAIGN INSIGHT</small><b>UNLOCKS AFTER YOUR FIRST CLEAR</b></span></header>';
+  private frontEndState(): FrontEndRenderState {
+    return {
+      route: this.frontEndRoute,
+      profile: this.campaign.snapshot(),
+      selectedHeroId: this.selectedMenuHero,
+      difficulty: this.controller.snapshot().difficulty,
+      muted: this.muted,
+      highContrast: this.highContrast,
+      reducedMotion: this.reducedMotion,
+      runtimeReady: this.controller.isRuntimeReady(),
+      audioMixer: this.audioMixerMarkup(),
+    };
+  }
+
+  private renderFrontEnd(): void {
+    const state = this.frontEndState();
+    const content = this.root.querySelector<HTMLElement>('[data-front-end-content]');
+    if (content) content.innerHTML = renderFrontEndContent(state);
+    this.root.querySelectorAll<HTMLElement>('[data-action="menu-route"]').forEach((button) => {
+      const selected = button.dataset.route === state.route;
+      button.classList.toggle('is-selected', selected);
+      button.setAttribute('aria-current', selected ? 'page' : 'false');
+    });
+  }
+
+  private revealRuntimeReady(): void {
+    const button = this.root.querySelector<HTMLButtonElement>('[data-action="begin"]');
+    if (button) {
+      button.disabled = false;
+      button.setAttribute('aria-busy', 'false');
     }
-    const available = Math.max(0, this.insight - this.insightLoadout.length);
-    return `<header><span><small>CAMPAIGN INSIGHT</small><b>${available} AVAILABLE • ${this.insightLoadout.length} ACTIVE</b></span><button data-action="insight-reset" ${this.insightLoadout.length ? '' : 'disabled'}>FREE RESPEC</button></header><div>${(Object.entries(insightUpgrades) as Array<[InsightUpgradeId, typeof insightUpgrades[InsightUpgradeId]]>).map(([id, upgrade]) => `<button class="insight-node ${this.insightLoadout.includes(id) ? 'is-active' : ''}" data-action="insight" data-upgrade="${id}" ${!this.insightLoadout.includes(id) && available === 0 ? 'disabled' : ''}><span>${upgrade.glyph}</span><b>${upgrade.name}</b><small>${upgrade.effect}</small><em>1 ✦</em></button>`).join('')}</div>`;
+    this.setText('[data-runtime-label]', 'FIRST CLEAR REWARD');
+    const profile = this.campaign.snapshot();
+    this.setText('[data-runtime-status]', profile.insightEarned > 0 ? `${profile.insightLoadout.length} / ${profile.insightEarned} insight equipped` : 'UNLOCKS AFTER YOUR FIRST CLEAR');
   }
 
   private audioMixerMarkup(): string {
@@ -429,13 +475,6 @@ export class GameUI {
       const percent = Math.round(this.audioMix[channel] * 100);
       return `<label class="audio-channel"><span>${labels[channel]}<output data-audio-value="${channel}">${percent}%</output></span><input type="range" min="0" max="1" step="0.01" value="${this.audioMix[channel]}" data-audio-channel="${channel}" aria-label="${labels[channel]} volume"></label>`;
     }).join('')}</div></section>`;
-  }
-
-  private persistInsightLoadout(): void {
-    localStorage.setItem('verdant-rift:insight-loadout', JSON.stringify(this.insightLoadout));
-    this.controller.setInsightLoadout(this.insightLoadout);
-    const board = this.root.querySelector<HTMLElement>('[data-insight-board]');
-    if (board) board.innerHTML = this.insightMarkup();
   }
 
   private scheduleRender(): void {
@@ -644,12 +683,14 @@ export class GameUI {
     const victory = phase === 'victory';
     const snapshot = this.controller.snapshot();
     let insight = '';
-    if (victory) {
-      const firstClear = localStorage.getItem('verdant-rift:first-clear') !== 'true';
-      if (firstClear) { localStorage.setItem('verdant-rift:first-clear', 'true'); localStorage.setItem('verdant-rift:insight', '3'); }
-      insight = firstClear ? '<div class="insight-reward">✦ FIRST CLEAR • +3 INSIGHT <small>Banked for the campaign progression layer.</small></div>' : '<div class="insight-reward muted">REPLAY CLEAR • TACTICAL MASTERY</div>';
-    }
     const stars = starRating(victory, snapshot.lives, snapshot.startingLives);
+    if (victory) {
+      const filledStars = stars.split('').filter((star) => star === '★').length as 1 | 2 | 3;
+      const clear = this.campaign.recordStageClear('sunken-way', filledStars, snapshot.score, snapshot.difficulty);
+      insight = clear.firstClear
+        ? `<div class="insight-reward">✦ FIRST CLEAR • +${clear.insightAwarded} INSIGHT <small>Spend it in the Insight Grove before your next deployment.</small></div>`
+        : '<div class="insight-reward muted">REPLAY CLEAR • BEST RESULTS PRESERVED</div>';
+    }
     const heroResults = snapshot.heroes.map((hero) => `<span data-result-hero="${hero.id}"><b>${hero.name.split(' • ')[0]} • LV ${hero.level}</b><small>${hero.ownKills} OWN KILLS • ${hero.xp} XP</small></span>`).join('');
     modal.innerHTML = `<div class="end-card panel-ornate ${victory ? 'victory' : 'defeat'}"><div class="end-sigil">${victory ? '✦' : '✕'}</div><div class="kicker">${victory ? 'THE RIFT ENDURES' : 'THE GATE HAS FALLEN'}</div><h2 id="end-title">${victory ? 'A green dawn returns.' : 'The Hollow Bloom takes root.'}</h2><div class="star-rating" aria-label="${stars.replaceAll('★','filled ').replaceAll('☆','empty ')}">${stars}</div><p>${victory ? 'Your rival covenants stood as one. The forest will remember this defense.' : 'Change your damage mix, specialize sooner, and move your champions where the line bends.'}</p>${insight}<div class="result-stats"><span><b>${snapshot.score.toLocaleString()}</b><small>RENOWN</small></span><span><b>${snapshot.lives}</b><small>GATE</small></span><span><b>${snapshot.towers.length}</b><small>TOWERS</small></span></div><div class="hero-results">${heroResults}</div><button class="primary-button" data-action="restart">${victory ? 'DEFEND AGAIN' : 'RETAKE THE RIFT'}</button></div>`;
     modal.classList.add('is-open');

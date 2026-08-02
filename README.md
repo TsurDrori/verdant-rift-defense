@@ -40,6 +40,7 @@ Open `http://localhost:4173`.
 - Capped early-call economy with hero-command recharge
 - Fixed 60 Hz deterministic simulation and impact-synchronized health, bounty, audio, defeat, and victory presentation
 - Responsive landscape/portrait behavior, keyboard play, reduced motion, contrast mode, pause-on-hidden, and persistent sound settings
+- Campaign hub with stage route, hero hall, permanent-upgrade grove, field guide, and settings surfaces backed by a versioned profile
 
 ## Music
 
@@ -62,3 +63,4 @@ Design and acceptance references live in [`docs/`](./docs/):
 - `ART_DIRECTION.md`
 - `QA_ACCEPTANCE.md`
 - `ASSET_MANIFEST.md`
+- `FRONT_END_ARCHITECTURE.md`

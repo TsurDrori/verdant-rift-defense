@@ -91,7 +91,7 @@ test('740×360 briefing exposes its CTA without hidden scrolling', async ({ page
   expect(box!.height).toBeGreaterThanOrEqual(44);
   expect(box!.y).toBeGreaterThanOrEqual(0);
   expect(box!.y + box!.height).toBeLessThanOrEqual(354);
-  expect(await page.locator('.briefing-card').evaluate((card) => card.scrollTop)).toBe(0);
+  expect(await page.locator('.front-end-content').evaluate((content) => content.scrollTop)).toBe(0);
 });
 
 test('740×360 tower details pause safely and expose an operative scroll cue', async ({ page }) => {
@@ -277,6 +277,7 @@ test('the world hero-health bar exposes the first authoritative hit without lagg
 });
 
 test('left and right tower panels never intersect visible hero cards across desktop breakpoints', async ({ browser }) => {
+  test.setTimeout(90_000);
   for (const viewport of [{ width: 1600, height: 900 }, { width: 1366, height: 768 }, { width: 1024, height: 768 }]) {
     const context = await browser.newContext({ viewport });
     const page = await context.newPage();

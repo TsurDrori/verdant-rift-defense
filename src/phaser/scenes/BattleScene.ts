@@ -63,8 +63,20 @@ export class BattleScene extends Phaser.Scene {
     this.tweens.add({ targets: this.towerFocusRing, scaleX: 1.14, scaleY: 1.08, alpha: { from: 0.92, to: 0.38 }, duration: 680, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]) => {
       if (this.uiOwnsPointer(pointer)) return;
-      if (over.length === 0) this.controller.worldAction({ x: pointer.worldX, y: pointer.worldY });
+      if (over.length === 0) {
+        const point = { x: pointer.worldX, y: pointer.worldY };
+        const nearestPad = BUILD_PADS
+          .map((pad, index) => ({ index, distance: Phaser.Math.Distance.Between(point.x, point.y, pad.x, pad.y) }))
+          .sort((a, b) => a.distance - b.distance)[0];
+        // Input zones and generated sprites remain the primary targets. This
+        // geometric fallback makes the authored foundation itself canonical
+        // if a transparent sprite gap or a just-refreshed hit list yields no
+        // Phaser object under an otherwise valid pad tap.
+        if (nearestPad && nearestPad.distance <= 56) this.controller.selectPad(nearestPad.index);
+        else this.controller.worldAction(point);
+      }
     });
+    this.controller.markRuntimeReady();
   }
 
   private uiOwnsPointer(pointer: Phaser.Input.Pointer): boolean {
@@ -197,6 +209,15 @@ export class BattleScene extends Phaser.Scene {
         };
         const sprite = view.getData('sprite') as Phaser.GameObjects.Image;
         sprite.setInteractive({ pixelPerfect: true, alphaTolerance: 12, useHandCursor: true }).on('pointerdown', selectTower);
+        // Preserve the painted foundation as a stable selection target after a
+        // tower is built. Branch sprites have transparent gaps around their
+        // feet, so relying on pixel-perfect art alone made a center-pad click
+        // intermittently miss the tower and left its upgrade panel closed.
+        const foundationHit = this.add.zone(0, 3, 88, 52)
+          .setName(`tower-foundation-hit-${tower.uid}`)
+          .setData('touchProxy', { width: 88, height: 52 })
+          .setInteractive({ useHandCursor: true })
+          .on('pointerdown', selectTower);
         // A generous, non-overlapping crown zone makes the intended selection
         // gesture forgiving even when the painted top has thin transparent gaps.
         const crownHit = this.add.zone(0, -68, 112, 120)
@@ -204,14 +225,13 @@ export class BattleScene extends Phaser.Scene {
           .setData('touchProxy', { width: 112, height: 120 })
           .setInteractive({ useHandCursor: true })
           .on('pointerdown', selectTower);
-        view.add(crownHit);
+        view.add([foundationHit, crownHit]);
         const selectionPlate = view.getData('selectionPlate') as Phaser.GameObjects.Ellipse;
         selectionPlate.setInteractive({ useHandCursor: true }).on('pointerdown', selectTower);
         this.towerViews.set(tower.uid, view);
       }
       this.setTowerPostFx(view, !this.enemyFxReduced);
       refreshTowerView(view, tower);
-      this.padRings[tower.padIndex]?.setVisible(false);
     }
     for (const [uid, view] of this.towerViews) {
       if (!snapshot.towers.some((tower) => tower.uid === uid)) {
@@ -220,7 +240,14 @@ export class BattleScene extends Phaser.Scene {
         this.towerViews.delete(uid);
       }
     }
-    this.padRings.forEach((pad, index) => pad.setVisible(!snapshot.towers.some((tower) => tower.padIndex === index)));
+    this.padRings.forEach((pad, index) => {
+      const occupied = snapshot.towers.some((tower) => tower.padIndex === index);
+      // Keep the authored 112px foundation proxy interactive beneath an
+      // occupied tower. Alpha hides its construction rune while `selectPad`
+      // resolves the exact tower identity, giving every rank/branch the same
+      // reliable center-click target as an empty foundation.
+      pad.setVisible(true).setAlpha(occupied ? 0 : 1);
+    });
 
     for (const enemy of snapshot.enemies) {
       if (!enemy.alive) continue;

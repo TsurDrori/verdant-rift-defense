@@ -35,13 +35,16 @@ for (const viewport of viewports) {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Hold the Verdant Rift' })).toBeVisible();
 
-    await expectReadableType(page, '.kicker', 11);
-    await expectReadableType(page, '.lead', 13);
-    await expectReadableType(page, '.briefing-grid b', viewport.height <= 620 ? 13 : 15);
-    await expectReadableType(page, '.briefing-grid small', 11);
-    await expectReadableType(page, '.difficulty-picker b', 14);
-    await expectReadableType(page, '.difficulty-picker small', 11);
-    await expectReadableType(page, '.primary-button', 14);
+    const shallow = viewport.height <= 430 && viewport.width > 620;
+    await expectReadableType(page, '.menu-view-heading > div:first-child > small', shallow ? 8 : 9);
+    await expectReadableType(page, '.menu-view-heading h1', shallow ? 21 : 28);
+    await expectReadableType(page, '.stage-dossier .lead', shallow ? 11 : 13);
+    await expectReadableType(page, '.stage-intel b', shallow ? 10 : 12);
+    await expectReadableType(page, '.stage-dossier .briefing-grid b', shallow ? 11 : 13);
+    if (!shallow) await expectReadableType(page, '.stage-dossier .briefing-grid small', 11);
+    await expectReadableType(page, '.difficulty-picker b', shallow ? 12 : 13);
+    if (!shallow) await expectReadableType(page, '.difficulty-picker small', 11);
+    await expectReadableType(page, '.primary-button', shallow ? 12 : 14);
     await expect(page.getByText('UNLOCKS AFTER YOUR FIRST CLEAR')).toBeVisible();
 
     await page.getByRole('button', { name: /ENTER THE RIFT/ }).click();

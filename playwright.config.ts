@@ -2,13 +2,10 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests/e2e',
-  // Phaser/WebAudio pages are GPU- and decoder-heavy. Capping concurrency
-  // keeps viewport measurements deterministic instead of starving five
-  // simultaneous game instances on typical laptops and hosted CI runners.
-  // Hosted runners are substantially slower once two Phaser/WebAudio pages
-  // contend for the same virtual CPU. CI shards across separate machines and
-  // keeps one game page active per runner.
-  workers: process.env.CI ? 1 : 3,
+  // Phaser/WebAudio pages are GPU- and decoder-heavy. A single worker keeps
+  // audio handoffs, fixed-step timing, and viewport measurements deterministic
+  // instead of making game regressions depend on machine-level contention.
+  workers: 1,
   // Headless Chromium on GitHub's software-rendered Linux VM is ~4× slower
   // than local GPU-backed runs at 1920×1080. Keep the strict local budget, but
   // let hosted layout/playfield assertions finish rather than timing out mid-read.

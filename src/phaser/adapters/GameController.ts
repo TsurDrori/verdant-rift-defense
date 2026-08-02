@@ -19,8 +19,15 @@ export class GameController extends EventTarget {
   armedAbility?: HeroId;
   private pendingPresentationLethals = 0;
   private deferredPresentationEvents: GameEvent[] = [];
+  private runtimeReady = false;
 
-  begin(): void { this.simulation.begin(); this.changed(); }
+  begin(): void { if (!this.runtimeReady) return; this.simulation.begin(); this.changed(); }
+  isRuntimeReady(): boolean { return this.runtimeReady; }
+  markRuntimeReady(): void {
+    if (this.runtimeReady) return;
+    this.runtimeReady = true;
+    this.dispatchEvent(new Event('runtime-ready'));
+  }
   setInsightLoadout(upgrades: readonly string[]): void { this.simulation.setInsightLoadout(upgrades); this.changed(); }
   setDifficulty(difficulty: DifficultyId): void { this.simulation.setDifficulty(difficulty); this.changed(); }
   update(delta: number): void { this.simulation.update(delta); this.changed(false); }
