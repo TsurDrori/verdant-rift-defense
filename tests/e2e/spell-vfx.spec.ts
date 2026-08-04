@@ -1,8 +1,10 @@
 import { expect, test } from '@playwright/test';
 
-const hostedCleanupTimeout = process.env.CI ? 5_000 : 2_500;
-const hostedAcceleratedTimeout = process.env.CI ? 2_500 : 1_500;
-const hostedReducedTimeout = process.env.CI ? 1_800 : 1_000;
+declare const process: { env: Readonly<Record<string, string | undefined>> };
+const isHostedRunner = Boolean(process.env.CI);
+const hostedCleanupTimeout = isHostedRunner ? 5_000 : 2_500;
+const hostedAcceleratedTimeout = isHostedRunner ? 2_500 : 1_500;
+const hostedReducedTimeout = isHostedRunner ? 1_800 : 1_000;
 
 async function enterBattle(page: import('@playwright/test').Page): Promise<void> {
   await page.goto('/');
@@ -88,14 +90,14 @@ test('spell presentation follows 2x time and reduced-motion cleanup bounds', asy
   await expect.poll(() => spellDiagnostics(page).then((result) => result.activeSpellFx), { timeout: hostedAcceleratedTimeout }).toBe(0);
   // The authored 2x tween duration is below one second (independent capture:
   // 821ms), while poll/raster scheduling on a hosted runner can add ~900ms.
-  expect(Date.now() - started).toBeLessThan(process.env.CI ? 2_300 : 1_250);
+  expect(Date.now() - started).toBeLessThan(isHostedRunner ? 2_300 : 1_250);
 
   await page.evaluate(() => document.documentElement.classList.add('reduce-motion'));
   const reducedStarted = Date.now();
   expect(await castPrimary(page, 'kael')).toBe(true);
   await expect.poll(() => spellDiagnostics(page).then((result) => result.activeSpellFx)).toBe(1);
   await expect.poll(() => spellDiagnostics(page).then((result) => result.activeSpellFx), { timeout: hostedReducedTimeout }).toBe(0);
-  expect(Date.now() - reducedStarted).toBeLessThan(process.env.CI ? 1_800 : 1_000);
+  expect(Date.now() - reducedStarted).toBeLessThan(isHostedRunner ? 1_800 : 1_000);
   expect((await spellDiagnostics(page)).spellFxObjects).toBe(0);
 });
 
