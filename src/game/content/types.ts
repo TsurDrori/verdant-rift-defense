@@ -3,6 +3,17 @@ export type TowerId = 'thorn' | 'ember' | 'aegis' | 'astral';
 export type TowerBranch = 'left' | 'right';
 export type EnemyId = 'skitter' | 'marauder' | 'wisp' | 'brute' | 'bloomlord';
 export type HeroId = 'kael' | 'lyra';
+export type HeroActiveSpellId = 'rift-quake' | 'warden-pulse' | 'starfall' | 'falling-constellation';
+export type HeroPassiveSpellId = 'riftbrand' | 'living-bulwark' | 'astral-echo' | 'starseed';
+export type HeroSpellId = HeroActiveSpellId | HeroPassiveSpellId;
+export type HeroMilestoneId = HeroPassiveSpellId | Exclude<HeroActiveSpellId, 'rift-quake' | 'starfall'>;
+export type HeroArtifactId =
+  | 'bastion-seal'
+  | 'riftglass-edge'
+  | 'oathstone-standard'
+  | 'far-star-lens'
+  | 'comet-prism'
+  | 'echo-charm';
 
 export interface TowerDefinition {
   id: TowerId;

@@ -1,8 +1,8 @@
 import { ENEMIES } from '../content/enemies';
 import { COMBAT_BALANCE } from '../content/combatBalance';
-import { HERO_LEVEL_THRESHOLDS, HERO_MILESTONES, HERO_XP_BY_ENEMY, heroAbilitySpec } from '../content/heroProgression';
+import { HERO_ARTIFACTS, HERO_LEVEL_THRESHOLDS, HERO_MILESTONES, HERO_PRIMARY_SPELL, HERO_SPELLS, HERO_XP_BY_ENEMY, heroAbilitySpec, heroUnlockedSpells, isHeroActiveSpell } from '../content/heroProgression';
 import { TOWERS } from '../content/towers';
-import type { DamageType, HeroId, TowerBranch, TowerId, WaveGroup } from '../content/types';
+import type { DamageType, HeroActiveSpellId, HeroArtifactId, HeroId, TowerBranch, TowerId, WaveGroup } from '../content/types';
 import { TACTICAL_PRESSURE_GROUPS, WAVES } from '../content/waves';
 import { BUILD_PADS, distance, PATH_LENGTH, pointInPathLane, pointOnPath, projectPointToPath, type Vec2 } from './geometry';
 import type { AttackPresentationActor, AttackPresentationStyle, DamageOwner, DefenderState, DifficultyId, EnemyState, GameEvent, GamePhase, GameSnapshot, HeroState, ProjectileStyle, TowerState } from './state';
@@ -13,8 +13,8 @@ interface BossEscort { at: number; enemy: keyof typeof ENEMIES; wave: number }
 type HeroTemplate = Omit<HeroState, 'x' | 'y' | 'target' | 'attackCooldown' | 'ultimateCooldown' | 'hp' | 'alive' | 'respawnTime' | 'spawn' | 'engagedEnemyUid'>;
 
 const heroTemplates: Record<HeroId, HeroTemplate> = {
-  kael: { id: 'kael', name: 'Kael • Rift Warden', color: 0x1e5962, accent: 0x7ee4cf, range: 92, damage: 38, fireRate: 0.72, speed: 138, canHitFlying: false, canBlock: true, level: 1, xp: 0, ownKills: 0, milestones: [], basicStrikeCount: 0, starseedPrimed: false, commanded: false, ultimateMax: 26, maxHp: 420, armor: 0.28, respawnMax: 11, regenCooldown: 0 },
-  lyra: { id: 'lyra', name: 'Lyra • Star Seer', color: 0x56347a, accent: 0xe1b4ff, range: 186, damage: 26, fireRate: 0.82, speed: 148, canHitFlying: true, canBlock: false, level: 1, xp: 0, ownKills: 0, milestones: [], basicStrikeCount: 0, starseedPrimed: false, commanded: false, ultimateMax: 31, maxHp: 285, armor: 0.12, respawnMax: 9, regenCooldown: 0 },
+  kael: { id: 'kael', name: 'Kael • Rift Warden', color: 0x1e5962, accent: 0x7ee4cf, range: 92, damage: 38, fireRate: 0.72, speed: 138, canHitFlying: false, canBlock: true, level: 1, xp: 0, ownKills: 0, milestones: [], unlockedSpells: ['rift-quake'], spellCooldowns: { 'rift-quake': 0, 'warden-pulse': 0, starfall: 0, 'falling-constellation': 0 }, artifact: null, basicStrikeCount: 0, starseedPrimed: false, commanded: false, ultimateMax: 26, maxHp: 420, armor: 0.28, respawnMax: 11, regenCooldown: 0 },
+  lyra: { id: 'lyra', name: 'Lyra • Star Seer', color: 0x56347a, accent: 0xe1b4ff, range: 186, damage: 26, fireRate: 0.82, speed: 148, canHitFlying: true, canBlock: false, level: 1, xp: 0, ownKills: 0, milestones: [], unlockedSpells: ['starfall'], spellCooldowns: { 'rift-quake': 0, 'warden-pulse': 0, starfall: 0, 'falling-constellation': 0 }, artifact: null, basicStrikeCount: 0, starseedPrimed: false, commanded: false, ultimateMax: 31, maxHp: 285, armor: 0.12, respawnMax: 9, regenCooldown: 0 },
 };
 
 const HERO_GUARD_RADIUS: Readonly<Record<HeroId, { reserve: number; commanded: number }>> = {
@@ -85,7 +85,7 @@ export class GameSimulation {
     const template = heroTemplates[id];
     const spawn = projectPointToPath(point).point;
     return {
-      ...template, milestones: [...template.milestones], ...spawn, target: { ...spawn }, spawn: { ...spawn }, attackCooldown: 0, ultimateCooldown: 0,
+      ...template, milestones: [...template.milestones], unlockedSpells: [...template.unlockedSpells], spellCooldowns: { ...template.spellCooldowns }, ...spawn, target: { ...spawn }, spawn: { ...spawn }, attackCooldown: 0, ultimateCooldown: 0,
       hp: template.maxHp, alive: true, respawnTime: 0, engagedEnemyUid: null,
     };
   }
@@ -149,11 +149,60 @@ export class GameSimulation {
     this.setDifficulty(this.difficulty);
   }
 
+  /**
+   * Equips at most one authored artifact per hero before combat. Invalid cross-
+   * hero assignments are rejected atomically, so a malformed save can never
+   * partially mutate battle balance.
+   */
+  setHeroArtifactLoadout(loadout: Partial<Record<HeroId, HeroArtifactId | null>>): boolean {
+    if (this.phase !== 'briefing') return false;
+    for (const [heroId, artifactId] of Object.entries(loadout) as Array<[HeroId, HeroArtifactId | null]>) {
+      if (!this.heroes.some((hero) => hero.id === heroId) || (artifactId !== null && HERO_ARTIFACTS[artifactId]?.hero !== heroId)) return false;
+    }
+    for (const hero of this.heroes) {
+      if (!(hero.id in loadout)) continue;
+      hero.artifact = loadout[hero.id] ?? null;
+      this.events.push({ type: 'hero-artifact-equipped', hero: hero.id, artifact: hero.artifact });
+    }
+    this.setDifficulty(this.difficulty);
+    return true;
+  }
+
+  private heroArtifactModifiers(hero: HeroState) {
+    return hero.artifact ? HERO_ARTIFACTS[hero.artifact].modifiers : undefined;
+  }
+
+  private heroSpellCooldownMax(hero: HeroState, spell: HeroActiveSpellId): number {
+    const artifactScale = this.heroArtifactModifiers(hero)?.spellCooldown ?? 1;
+    const commandScale = this.insightLoadout.has('command') ? 0.9 : 1;
+    return HERO_SPELLS[spell].cooldown * artifactScale * commandScale;
+  }
+
+  private reduceHeroSpellCooldowns(hero: HeroState, seconds: number): void {
+    const primary = HERO_PRIMARY_SPELL[hero.id];
+    hero.ultimateCooldown = Math.max(0, hero.ultimateCooldown - seconds);
+    hero.spellCooldowns[primary] = hero.ultimateCooldown;
+    for (const spell of hero.unlockedSpells) {
+      if (!isHeroActiveSpell(spell) || spell === primary) continue;
+      hero.spellCooldowns[spell] = Math.max(0, hero.spellCooldowns[spell] - seconds);
+    }
+  }
+
   private applyInsightBonuses(): void {
-    this.heroes.forEach((hero) => { hero.ultimateMax = heroTemplates[hero.id].ultimateMax; });
+    this.heroes.forEach((hero) => {
+      const template = heroTemplates[hero.id];
+      const artifact = hero.artifact ? HERO_ARTIFACTS[hero.artifact] : undefined;
+      const modifiers = artifact?.modifiers;
+      hero.maxHp = template.maxHp * (modifiers?.maxHp ?? 1);
+      hero.hp = hero.maxHp;
+      hero.damage = template.damage * (modifiers?.damage ?? 1);
+      hero.range = template.range * (modifiers?.range ?? 1);
+      hero.speed = template.speed * (modifiers?.speed ?? 1);
+      hero.armor = Math.max(0, Math.min(0.8, template.armor + (modifiers?.armor ?? 0)));
+      hero.ultimateMax = this.heroSpellCooldownMax(hero, HERO_PRIMARY_SPELL[hero.id]);
+    });
     if (this.insightLoadout.has('treasury')) this.gold += 25;
     if (this.insightLoadout.has('gate')) this.lives += 2;
-    if (this.insightLoadout.has('command')) this.heroes.forEach((hero) => { hero.ultimateMax *= 0.9; });
     this.startingLives = this.lives;
   }
 
@@ -255,7 +304,7 @@ export class GameSimulation {
     if (this.phase !== 'playing' || !mayStart || this.waveIndex >= WAVES.length) return false;
     const bonus = this.waveIndex === 0 ? 0 : Math.min(45, Math.max(0, Math.floor(this.intermission * 2.2)));
     this.gold += bonus;
-    if (bonus > 0) this.heroes.forEach((hero) => { hero.ultimateCooldown = Math.max(0, hero.ultimateCooldown - 2.5); });
+    if (bonus > 0) this.heroes.forEach((hero) => { this.reduceHeroSpellCooldowns(hero, 2.5); });
     const waveNumber = this.waveIndex + 1;
     const wave = WAVES[this.waveIndex]!;
     this.waveIndex += 1;
@@ -836,9 +885,9 @@ export class GameSimulation {
     if (hero.level >= 6) {
       if (hero.id === 'kael') {
         hero.hp = Math.min(hero.maxHp, hero.hp + hero.maxHp * 0.06);
-        hero.ultimateCooldown = Math.max(0, hero.ultimateCooldown - 0.65);
+        this.reduceHeroSpellCooldowns(hero, 0.65);
       } else {
-        hero.ultimateCooldown = Math.max(0, hero.ultimateCooldown - 0.85);
+        this.reduceHeroSpellCooldowns(hero, 0.85);
         hero.starseedPrimed = true;
       }
     }
@@ -851,9 +900,10 @@ export class GameSimulation {
     hero.damage *= 1.07;
     hero.speed = Math.min(heroTemplates[hero.id].speed * 1.075, hero.speed * 1.015);
     hero.hp = Math.min(hero.maxHp, hero.hp + (hero.maxHp - previousMaxHp) + hero.maxHp * 0.12);
-    hero.ultimateCooldown = Math.max(0, hero.ultimateCooldown - 1.25);
+    this.reduceHeroSpellCooldowns(hero, 1.25);
     const unlocked = HERO_MILESTONES[hero.id][hero.level];
     if (unlocked && !hero.milestones.includes(unlocked)) hero.milestones.push(unlocked);
+    hero.unlockedSpells = heroUnlockedSpells(hero.id, hero.level);
     this.events.push({ type: 'hero-level-up', hero: hero.id, level: hero.level, point: { x: hero.x, y: hero.y }, unlocked });
   }
 
@@ -889,6 +939,12 @@ export class GameSimulation {
   private updateHeroes(dt: number): void {
     for (const hero of this.heroes) {
       hero.ultimateCooldown = Math.max(0, hero.ultimateCooldown - dt);
+      const primary = HERO_PRIMARY_SPELL[hero.id];
+      hero.spellCooldowns[primary] = hero.ultimateCooldown;
+      for (const spell of hero.unlockedSpells) {
+        if (!isHeroActiveSpell(spell) || spell === primary) continue;
+        hero.spellCooldowns[spell] = Math.max(0, hero.spellCooldowns[spell] - dt);
+      }
       hero.attackCooldown -= dt;
       if (!hero.alive) {
         hero.respawnTime = Math.max(0, hero.respawnTime - dt);
@@ -979,7 +1035,8 @@ export class GameSimulation {
         .sort((a, b) => b.progress - a.progress || a.uid - b.uid)[0];
       if (chain) {
         this.presentAttack('ally', this.allyRef(hero), `enemy:${chain.uid}`, target, chain, hero.accent, 'lyra', 0.06, 0.12);
-        this.hitEnemy(chain, damage * 0.55, 'arcane', target, 0, hero.accent, 'lyra', { kind: 'hero', heroId: 'lyra', channel: 'magic' });
+        const echoScale = this.heroArtifactModifiers(hero)?.echoDamage ?? 0.55;
+        this.hitEnemy(chain, damage * echoScale, 'arcane', target, 0, hero.accent, 'lyra', { kind: 'hero', heroId: 'lyra', channel: 'magic' });
       }
     }
   }
@@ -994,24 +1051,101 @@ export class GameSimulation {
   }
 
   useAbility(id: HeroId, point: Vec2): boolean {
+    return this.useHeroSpell(id, HERO_PRIMARY_SPELL[id], point);
+  }
+
+  getHeroSpellTargeting(id: HeroId, spell: HeroActiveSpellId): Readonly<{ targeting: 'point' | 'self'; castRange: number; effectRadius: number }> | null {
     const hero = this.heroes.find((candidate) => candidate.id === id);
-    if (!hero || !hero.alive || hero.ultimateCooldown > 0 || this.phase !== 'playing') return false;
-    const ability = heroAbilitySpec(id, hero.level);
-    if (distance(hero, point) > ability.castRange) return false;
-    hero.ultimateCooldown = hero.ultimateMax;
-    this.events.push({ type: 'ability', hero: id, point });
-    if (id === 'kael') {
+    const definition = HERO_SPELLS[spell] as (typeof HERO_SPELLS)[HeroActiveSpellId] | undefined;
+    if (!hero || !definition || definition.kind !== 'active' || definition.hero !== id) return null;
+    const legacyAbility = spell === HERO_PRIMARY_SPELL[id] ? heroAbilitySpec(id, hero.level) : undefined;
+    const rangeScale = this.heroArtifactModifiers(hero)?.range ?? 1;
+    return {
+      targeting: definition.targeting as 'point' | 'self',
+      castRange: (legacyAbility?.castRange ?? definition.castRange) * rangeScale,
+      effectRadius: (legacyAbility?.effectRadius ?? definition.effectRadius) * rangeScale,
+    };
+  }
+
+  canUseHeroSpell(id: HeroId, spell: HeroActiveSpellId, requestedPoint: Vec2): boolean {
+    const hero = this.heroes.find((candidate) => candidate.id === id);
+    const definition = HERO_SPELLS[spell] as (typeof HERO_SPELLS)[HeroActiveSpellId] | undefined;
+    const targeting = this.getHeroSpellTargeting(id, spell);
+    if (!hero || !definition || !targeting || !hero.alive || this.phase !== 'playing' || definition.kind !== 'active' || !hero.unlockedSpells.includes(spell)) return false;
+    const cooldown = spell === HERO_PRIMARY_SPELL[id] ? hero.ultimateCooldown : hero.spellCooldowns[spell];
+    if (cooldown > 0) return false;
+    return targeting.targeting === 'self' || distance(hero, requestedPoint) <= targeting.castRange;
+  }
+
+  useHeroSpell(id: HeroId, spell: HeroActiveSpellId, requestedPoint: Vec2): boolean {
+    const hero = this.heroes.find((candidate) => candidate.id === id);
+    const definition = HERO_SPELLS[spell] as (typeof HERO_SPELLS)[HeroActiveSpellId] | undefined;
+    const targeting = this.getHeroSpellTargeting(id, spell);
+    if (!hero || !definition || !targeting || !this.canUseHeroSpell(id, spell, requestedPoint)) return false;
+    const primary = HERO_PRIMARY_SPELL[id];
+
+    const point = targeting.targeting === 'self' ? { x: hero.x, y: hero.y } : requestedPoint;
+    const legacyAbility = spell === primary ? heroAbilitySpec(id, hero.level) : undefined;
+    const effectRadius = targeting.effectRadius;
+
+    const maximumCooldown = spell === primary ? hero.ultimateMax : this.heroSpellCooldownMax(hero, spell);
+    hero.spellCooldowns[spell] = maximumCooldown;
+    if (spell === primary) hero.ultimateCooldown = maximumCooldown;
+    const spellDamageScale = this.heroArtifactModifiers(hero)?.spellDamage ?? 1;
+    const targets: number[] = [];
+    if (spell === 'rift-quake') {
+      const damage = (legacyAbility?.damage ?? definition.damage) * spellDamageScale;
       for (const enemy of this.enemies) {
-        if (enemy.alive && distance(enemy, point) < ability.effectRadius && !ENEMIES[enemy.type].flying) {
-          this.hitEnemy(enemy, ability.damage, 'true', point, 0, hero.accent, 'impact', { kind: 'hero', heroId: id, channel: 'ultimate' });
+        if (enemy.alive && distance(enemy, point) < effectRadius && !ENEMIES[enemy.type].flying) {
+          targets.push(enemy.uid);
+          this.hitEnemy(enemy, damage, 'true', point, 0, hero.accent, 'impact', { kind: 'hero', heroId: id, channel: 'ultimate' });
           enemy.slow = 0.68;
           enemy.slowTime = 3.2;
         }
       }
+    } else if (spell === 'warden-pulse') {
+      hero.hp = Math.min(hero.maxHp, hero.hp + hero.maxHp * 0.18);
+      for (const defender of this.defenders) {
+        if (!defender.alive || distance(defender, point) > effectRadius) continue;
+        defender.hp = Math.min(defender.maxHp, defender.hp + defender.maxHp * 0.24);
+      }
+      for (const enemy of this.enemies) {
+        if (!enemy.alive || ENEMIES[enemy.type].flying || distance(enemy, point) > effectRadius) continue;
+        targets.push(enemy.uid);
+        enemy.exposed = Math.max(enemy.exposed, 0.18);
+        enemy.exposedTime = Math.max(enemy.exposedTime, 5);
+      }
+    } else if (spell === 'starfall') {
+      const damage = (legacyAbility?.damage ?? definition.damage) * spellDamageScale;
+      const selected = this.enemies
+        .filter((enemy) => enemy.alive && distance(enemy, point) < effectRadius)
+        .sort((a, b) => b.progress - a.progress || a.uid - b.uid)
+        .slice(0, legacyAbility?.maxTargets ?? definition.maxTargets);
+      for (const enemy of selected) {
+        targets.push(enemy.uid);
+        this.hitEnemy(enemy, damage, 'arcane', point, 0, hero.accent, 'impact', { kind: 'hero', heroId: id, channel: 'ultimate' });
+      }
+    } else if (spell === 'falling-constellation') {
+      const selected = this.enemies
+        .filter((enemy) => enemy.alive && distance(enemy, point) < effectRadius)
+        .sort((a, b) => b.maxHp - a.maxHp || b.progress - a.progress || a.uid - b.uid)
+        .slice(0, definition.maxTargets);
+      for (const enemy of selected) {
+        targets.push(enemy.uid);
+        this.hitEnemy(enemy, definition.damage * spellDamageScale, 'arcane', point, 0, hero.accent, 'impact', { kind: 'hero', heroId: id, channel: 'magic' });
+        if (enemy.alive) {
+          enemy.mark = Math.max(enemy.mark, 0.25);
+          enemy.markTime = Math.max(enemy.markTime, 6);
+        }
+      }
     } else {
-      const targets = this.enemies.filter((enemy) => enemy.alive && distance(enemy, point) < ability.effectRadius).sort((a, b) => b.progress - a.progress || a.uid - b.uid).slice(0, ability.maxTargets);
-      for (const enemy of targets) this.hitEnemy(enemy, ability.damage, 'arcane', point, 0, hero.accent, 'impact', { kind: 'hero', heroId: id, channel: 'ultimate' });
+      // Compile-time exhaustiveness prevents a newly registered active spell
+      // from silently inheriting another spell's combat behavior.
+      const unhandledSpell: never = spell;
+      void unhandledSpell;
+      return false;
     }
+    this.events.push({ type: 'hero-spell-cast', hero: id, spell, point, radius: effectRadius, targets });
     return true;
   }
 

@@ -1,6 +1,6 @@
 import { TOWERS } from '../game/content/towers';
-import { HERO_LEVEL_THRESHOLDS, HERO_MILESTONE_NAMES, heroXpProgress } from '../game/content/heroProgression';
-import type { HeroId, TowerBranch, TowerId } from '../game/content/types';
+import { HERO_ARTIFACTS, HERO_LEVEL_THRESHOLDS, HERO_MILESTONE_NAMES, heroArtifactsForHero, heroSpellSpec, heroSpellsForHero, heroXpProgress } from '../game/content/heroProgression';
+import type { HeroActiveSpellId, HeroArtifactId, HeroId, TowerBranch, TowerId } from '../game/content/types';
 import { WAVES } from '../game/content/waves';
 import type { GameEvent, HeroState, TowerState } from '../game/simulation/state';
 import { BUILD_PADS } from '../game/simulation/geometry';
@@ -9,9 +9,47 @@ import { CampaignProfileStore } from '../game/campaign/CampaignProfile';
 import { heroById, stageById, type CampaignStageId, type InsightUpgradeId, type MenuHeroId } from '../game/campaign/content';
 import type { DifficultyId } from '../game/simulation/state';
 import { GameController } from '../phaser/adapters/GameController';
+import type { SpellTargetPreview } from '../phaser/adapters/GameController';
 import { renderFrontEndContent, renderFrontEndFrame, type FrontEndRenderState, type FrontEndRoute } from './FrontEndShell';
 
 const towerGlyph: Record<TowerId, string> = { thorn: '➶', ember: '✹', aegis: '♜', astral: '✦' };
+const spellGlyph: Readonly<Record<HeroActiveSpellId, string>> = {
+  'rift-quake': '❈',
+  'warden-pulse': '✥',
+  starfall: '✧',
+  'falling-constellation': '✦',
+};
+const spellShortcut: Readonly<Record<HeroActiveSpellId, number>> = {
+  'rift-quake': 1,
+  starfall: 2,
+  'warden-pulse': 3,
+  'falling-constellation': 4,
+};
+
+type HeroArtifactLoadout = Record<HeroId, HeroArtifactId | null>;
+const HERO_ARTIFACT_STORAGE_KEY = 'verdant-rift:hero-artifacts';
+
+interface StoredHeroArtifactsV1 {
+  version: 1;
+  loadout: Partial<Record<HeroId, string | null>>;
+}
+
+function storedHeroArtifacts(): HeroArtifactLoadout {
+  const fallback: HeroArtifactLoadout = { kael: null, lyra: null };
+  try {
+    const parsed = JSON.parse(localStorage.getItem(HERO_ARTIFACT_STORAGE_KEY) ?? '{}') as Partial<Record<HeroId, string | null>> | StoredHeroArtifactsV1;
+    // Accept the original unversioned shape once, then write only the versioned
+    // envelope. Optional preferences must never make a campaign save unreadable.
+    const stored: Partial<Record<HeroId, string | null>> = 'version' in parsed && parsed.version === 1 && parsed.loadout
+      ? parsed.loadout
+      : parsed as Partial<Record<HeroId, string | null>>;
+    for (const heroId of ['kael', 'lyra'] as HeroId[]) {
+      const id = stored[heroId];
+      if (id && HERO_ARTIFACTS[id as HeroArtifactId]?.hero === heroId) fallback[heroId] = id as HeroArtifactId;
+    }
+  } catch { /* Invalid optional loadouts degrade to the neutral choice. */ }
+  return fallback;
+}
 
 export function starRating(victory: boolean, lives: number, startingLives: number): string {
   if (!victory) return '☆☆☆';
@@ -49,6 +87,7 @@ export class GameUI {
   private readonly campaign = new CampaignProfileStore();
   private frontEndRoute: FrontEndRoute = 'campaign';
   private selectedMenuHero: MenuHeroId = 'kael';
+  private artifactLoadout = storedHeroArtifacts();
   private audioMix = storedAudioMix();
   private muted = localStorage.getItem('verdant-rift:muted') === 'true';
   private highContrast = localStorage.getItem('verdant-rift:contrast') === 'true';
@@ -64,7 +103,9 @@ export class GameUI {
     this.root = root;
     this.controller = controller;
     this.controller.setInsightLoadout(this.campaign.snapshot().insightLoadout);
+    this.controller.setHeroArtifactLoadout(this.artifactLoadout);
     this.root.innerHTML = this.shell();
+    this.enhanceHeroArtifactUI();
     this.syncModalAccessibility();
     document.documentElement.classList.toggle('high-contrast', this.highContrast);
     document.documentElement.classList.toggle('reduce-motion', this.reducedMotion);
@@ -74,6 +115,9 @@ export class GameUI {
     controller.addEventListener('game-event', ((event: CustomEvent<GameEvent>) => this.onGameEvent(event.detail)) as EventListener);
     controller.addEventListener('presentation-event', ((event: CustomEvent<GameEvent>) => this.onPresentationEvent(event.detail)) as EventListener);
     controller.addEventListener('runtime-ready', () => this.revealRuntimeReady());
+    controller.addEventListener('cast-mode-change', () => this.syncCastMode());
+    controller.addEventListener('spell-target-preview', ((event: CustomEvent<SpellTargetPreview>) => this.syncCastReticle(event.detail)) as EventListener);
+    controller.addEventListener('spell-target-invalid', () => this.rejectCastReticle());
     this.campaign.addEventListener('change', () => {
       this.controller.setInsightLoadout(this.campaign.snapshot().insightLoadout);
       this.renderFrontEnd();
@@ -111,6 +155,12 @@ export class GameUI {
         <section class="selection-panel panel" data-selection-panel aria-label="Tower controls"></section>
         <button class="panel-scroll-affordance panel" data-panel-scroll-cue data-action="panel-scroll" aria-label="Show more tower controls"><span>MORE CONTROLS</span><b>↓</b></button>
         <section class="hero-dock" data-hero-dock></section>
+        <section class="cast-command panel" data-cast-command role="status" aria-live="assertive" aria-hidden="true">
+          <span class="cast-command-sigil" data-cast-glyph>✦</span>
+          <span><small data-cast-hero>HERO SPELL</small><b data-cast-name>Choose a target</b><em>Tap the battlefield • Esc or right-click cancels</em></span>
+          <button data-action="cancel-cast" aria-label="Cancel spell targeting">×</button>
+        </section>
+        <div class="cast-reticle" data-cast-reticle aria-hidden="true"><i></i><b></b><span data-cast-validity></span></div>
         <div class="toast-stack" data-toast-stack></div>
       </div>
 
@@ -183,6 +233,9 @@ export class GameUI {
       else if (action === 'branch') this.controller.branch(button.dataset.branch as TowerBranch, towerUid, this.contextPaused);
       else if (action === 'hero') { this.controller.selectHero(button.dataset.hero as HeroId); this.resumeContextPause(); }
       else if (action === 'ability') this.controller.armAbility(button.dataset.hero as HeroId);
+      else if (action === 'spell') this.controller.armSpell(button.dataset.hero as HeroId, button.dataset.spell as HeroActiveSpellId);
+      else if (action === 'cancel-cast') this.controller.cancelSpellCast();
+      else if (action === 'hero-artifact') this.chooseHeroArtifact(button.dataset.hero as HeroId, button.dataset.artifact as HeroArtifactId);
       else if (action === 'view-mode' && !this.controlsAreGated()) this.setViewMode(this.viewMode === 'focus' ? 'overview' : 'focus');
       else if (action === 'view-pan' && !this.controlsAreGated()) this.panFocusedView(Number(button.dataset.direction) || 0);
       else if (action === 'panel-scroll') this.scrollContextPanel();
@@ -219,6 +272,11 @@ export class GameUI {
       if (output) output.value = `${Math.round(value * 100)}%`;
       this.root.dispatchEvent(new CustomEvent('audio-settings', { detail: { [channel]: value } }));
     });
+    this.root.addEventListener('change', (event) => {
+      const select = (event.target as HTMLElement).closest<HTMLSelectElement>('select[data-artifact-hero]');
+      if (!select) return;
+      this.chooseHeroArtifact(select.dataset.artifactHero as HeroId, select.value === 'none' ? null : select.value as HeroArtifactId);
+    });
     // Capture before Phaser or browser shortcuts can redirect focus outside an
     // active dialog. Inert remains the structural backstop for pointer/AT use.
     document.addEventListener('keydown', (event) => {
@@ -230,7 +288,8 @@ export class GameUI {
     }, true);
     window.addEventListener('keydown', (event) => {
       if (event.code === 'Escape') {
-        if (this.contextPaused) this.closeContextPanel();
+        if (this.controller.cancelSpellCast()) event.preventDefault();
+        else if (this.contextPaused) this.closeContextPanel();
         else if (this.root.querySelector('[data-pause-modal].is-open')) this.controller.togglePause();
         return;
       }
@@ -245,15 +304,116 @@ export class GameUI {
       if (event.code === 'KeyS') this.controller.nudgeSelectedHero(0, 55);
       if (event.code === 'KeyA') this.controller.nudgeSelectedHero(-55, 0);
       if (event.code === 'KeyD') this.controller.nudgeSelectedHero(55, 0);
+      // Preserve the fast RTS-style frontline casts on 1/2; secondary spell
+      // targeting remains explicit on 3/4 and every spell has a pointer/touch
+      // button, so keyboard speed never weakens the exclusive world mode.
       if (event.code === 'Digit1') this.controller.castAtFrontline('kael');
       if (event.code === 'Digit2') this.controller.castAtFrontline('lyra');
+      if (event.code === 'Digit3' && this.controller.snapshot().heroes.find((hero) => hero.id === 'kael')?.unlockedSpells.includes('warden-pulse')) this.controller.armSpell('kael', 'warden-pulse');
+      if (event.code === 'Digit4' && this.controller.snapshot().heroes.find((hero) => hero.id === 'lyra')?.unlockedSpells.includes('falling-constellation')) this.controller.armSpell('lyra', 'falling-constellation');
     });
+    this.bindCastPointerBoundary();
     document.addEventListener('visibilitychange', () => {
       if (document.hidden && this.controller.snapshot().phase === 'playing') this.controller.togglePause();
     });
     document.querySelector<HTMLElement>('#game-root')?.addEventListener('scroll', () => this.captureFocusedWorld(), { passive: true });
     this.root.querySelector<HTMLElement>('[data-selection-panel]')?.addEventListener('scroll', () => this.syncPanelScrollAffordance(), { passive: true });
     window.addEventListener('resize', () => requestAnimationFrame(() => this.syncResponsiveLayout()));
+  }
+
+  /**
+   * Capture before Phaser so an armed spell owns every battlefield press,
+   * including presses on interactive tower, pad, and hero display objects.
+   * This is the hard input boundary: view objects cannot accidentally convert
+   * a cast into selection or movement while targeting is active.
+   */
+  private bindCastPointerBoundary(): void {
+    const gameRoot = document.querySelector<HTMLElement>('#game-root');
+    if (!gameRoot) return;
+    const worldPoint = (event: PointerEvent): { x: number; y: number } | undefined => {
+      const canvas = gameRoot.querySelector<HTMLCanvasElement>('canvas');
+      const bounds = canvas?.getBoundingClientRect();
+      if (!bounds || bounds.width <= 0 || bounds.height <= 0) return undefined;
+      return {
+        x: Math.max(0, Math.min(1600, ((event.clientX - bounds.left) / bounds.width) * 1600)),
+        y: Math.max(0, Math.min(900, ((event.clientY - bounds.top) / bounds.height) * 900)),
+      };
+    };
+    gameRoot.addEventListener('pointermove', (event) => {
+      if (!this.controller.isSpellCastMode()) return;
+      const point = worldPoint(event);
+      if (point) this.controller.previewSpellTarget(point);
+      this.positionCastReticle(event.clientX, event.clientY);
+    }, true);
+    gameRoot.addEventListener('pointerleave', () => {
+      if (!this.controller.isSpellCastMode()) return;
+      this.controller.previewSpellTarget();
+      this.root.querySelector('[data-cast-reticle]')?.classList.remove('is-visible');
+    }, true);
+    gameRoot.addEventListener('pointerdown', (event) => {
+      if (!this.controller.isSpellCastMode()) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (event.button === 2) {
+        this.controller.cancelSpellCast();
+        return;
+      }
+      if (event.button !== 0 || this.controlsAreGated()) return;
+      const point = worldPoint(event);
+      if (point) this.controller.worldAction(point);
+    }, true);
+    gameRoot.addEventListener('contextmenu', (event) => {
+      // The battlefield never has a useful browser context menu. Suppress it
+      // even if pointerdown already cancelled the spell a few milliseconds
+      // earlier, otherwise the native menu appears after a successful cancel.
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (this.controller.isSpellCastMode()) this.controller.cancelSpellCast();
+    }, true);
+  }
+
+  private syncCastMode(): void {
+    const armed = this.controller.armedSpell;
+    document.documentElement.classList.toggle('spell-cast-mode', Boolean(armed));
+    const command = this.root.querySelector<HTMLElement>('[data-cast-command]');
+    const reticle = this.root.querySelector<HTMLElement>('[data-cast-reticle]');
+    if (!command || !reticle) return;
+    command.classList.toggle('is-visible', Boolean(armed));
+    command.setAttribute('aria-hidden', armed ? 'false' : 'true');
+    if (!armed) {
+      reticle.classList.remove('is-visible', 'is-valid', 'is-invalid', 'is-rejected');
+      return;
+    }
+    const hero = this.controller.snapshot().heroes.find((candidate) => candidate.id === armed.heroId);
+    const spell = heroSpellSpec(armed.spellId);
+    this.setText('[data-cast-hero]', `${hero?.name.split(' • ')[0] ?? armed.heroId} • SPELL TARGETING`);
+    this.setText('[data-cast-name]', spell.name);
+    this.setText('[data-cast-glyph]', spellGlyph[armed.spellId]);
+  }
+
+  private syncCastReticle(preview: SpellTargetPreview): void {
+    const reticle = this.root.querySelector<HTMLElement>('[data-cast-reticle]');
+    if (!reticle) return;
+    const hasPoint = Boolean(preview.point);
+    reticle.classList.toggle('is-visible', hasPoint);
+    reticle.classList.toggle('is-valid', preview.valid === true);
+    reticle.classList.toggle('is-invalid', preview.valid === false);
+    if (hasPoint) this.setText('[data-cast-validity]', preview.valid ? 'CAST' : 'OUT OF RANGE');
+  }
+
+  private positionCastReticle(clientX: number, clientY: number): void {
+    const reticle = this.root.querySelector<HTMLElement>('[data-cast-reticle]');
+    if (!reticle) return;
+    const bounds = this.root.getBoundingClientRect();
+    reticle.style.left = `${clientX - bounds.left}px`;
+    reticle.style.top = `${clientY - bounds.top}px`;
+  }
+
+  private rejectCastReticle(): void {
+    const reticle = this.root.querySelector<HTMLElement>('[data-cast-reticle]');
+    if (!reticle) return;
+    reticle.classList.remove('is-rejected');
+    requestAnimationFrame(() => reticle.classList.add('is-rejected'));
   }
 
   private applyViewMode(smooth: boolean): void {
@@ -456,6 +616,56 @@ export class GameUI {
       button.classList.toggle('is-selected', selected);
       button.setAttribute('aria-current', selected ? 'page' : 'false');
     });
+    this.enhanceHeroArtifactUI();
+  }
+
+  private chooseHeroArtifact(heroId: HeroId, artifactId: HeroArtifactId | null): void {
+    if (artifactId && HERO_ARTIFACTS[artifactId]?.hero !== heroId) return;
+    const next = { ...this.artifactLoadout, [heroId]: artifactId };
+    if (!this.controller.setHeroArtifactLoadout(next)) return;
+    this.artifactLoadout = next;
+    try {
+      const payload: StoredHeroArtifactsV1 = { version: 1, loadout: next };
+      localStorage.setItem(HERO_ARTIFACT_STORAGE_KEY, JSON.stringify(payload));
+    } catch {
+      // Storage can be denied or full. The authoritative session choice remains
+      // valid and the UI must still rerender instead of becoming half-mutated.
+    }
+    this.renderFrontEnd();
+    this.toast(artifactId ? `${HERO_ARTIFACTS[artifactId].name} equipped` : `${heroId === 'kael' ? 'Kael' : 'Lyra'} carries no artifact`, 'good');
+  }
+
+  /** Adds the pre-battle relic choice to both relevant menu surfaces without
+   * coupling the campaign renderer to simulation-specific hero equipment. */
+  private enhanceHeroArtifactUI(): void {
+    if (this.controller.snapshot().phase !== 'briefing') return;
+    const selectedHero = this.selectedMenuHero === 'kael' || this.selectedMenuHero === 'lyra' ? this.selectedMenuHero : undefined;
+    const dossierAbility = this.root.querySelector<HTMLElement>('.hero-dossier .hero-ability');
+    if (this.frontEndRoute === 'heroes' && selectedHero && dossierAbility && !this.root.querySelector('[data-hero-artifacts]')) {
+      const selected = this.artifactLoadout[selectedHero];
+      const section = document.createElement('section');
+      section.className = 'hero-artifact-choice';
+      section.dataset.heroArtifacts = selectedHero;
+      section.innerHTML = `<header><span><small>MISSION ARTIFACT</small><b>Choose one deliberate tradeoff</b></span><em>Briefing only • no loot grind</em></header><div>${heroArtifactsForHero(selectedHero).map((artifact) => `<button data-action="hero-artifact" data-hero="${selectedHero}" data-artifact="${artifact.id}" class="${selected === artifact.id ? 'is-equipped' : ''}" aria-pressed="${selected === artifact.id}"><span>◆</span><b>${artifact.name}</b><small>${artifact.upside}</small><em>${artifact.tradeoff}</em></button>`).join('')}</div>`;
+      dossierAbility.insertAdjacentElement('afterend', section);
+    }
+
+    const stageDossier = this.root.querySelector<HTMLElement>('.stage-dossier');
+    const launchRow = stageDossier?.querySelector<HTMLElement>('.launch-row');
+    if (this.frontEndRoute === 'campaign' && stageDossier && launchRow && !stageDossier.querySelector('[data-artifact-loadout]')) {
+      const section = document.createElement('section');
+      section.className = 'briefing-artifacts';
+      section.dataset.artifactLoadout = '';
+      section.innerHTML = `<small>HERO ARTIFACTS • ONE TRADEOFF EACH</small><div>${(['kael', 'lyra'] as HeroId[]).map((heroId) => {
+        const artifactId = this.artifactLoadout[heroId];
+        const equipped = artifactId ? HERO_ARTIFACTS[artifactId] : undefined;
+        const detail = equipped
+          ? `<small class="briefing-artifact-detail"><b>${equipped.name}</b><span>${equipped.upside}</span><em>${equipped.tradeoff}</em></small>`
+          : '<small class="briefing-artifact-detail is-neutral"><b>No artifact</b><span>Baseline champion profile.</span><em>No tradeoff.</em></small>';
+        return `<label><span>${heroId === 'kael' ? 'KAEL' : 'LYRA'}</span><select data-artifact-hero="${heroId}" aria-label="${heroId === 'kael' ? 'Kael' : 'Lyra'} mission artifact"><option value="none">No artifact</option>${heroArtifactsForHero(heroId).map((artifact) => `<option value="${artifact.id}" ${artifactId === artifact.id ? 'selected' : ''}>${artifact.name}</option>`).join('')}</select>${detail}</label>`;
+      }).join('')}</div>`;
+      launchRow.insertAdjacentElement('beforebegin', section);
+    }
   }
 
   private revealRuntimeReady(): void {
@@ -494,6 +704,7 @@ export class GameUI {
     this.renderWaveCard();
     this.renderBoss();
     this.renderHeroes(snapshot.heroes);
+    this.syncCastMode();
     const selectionKey = JSON.stringify([this.controller.selection, snapshot.gold, snapshot.towers.map((tower) => [tower.uid, tower.level, tower.branch, tower.priority])]);
     if (selectionKey !== this.lastSelection) { this.lastSelection = selectionKey; this.renderSelection(); }
     const presentedPhase = snapshot.phase === 'victory' && this.controller.hasPendingLethalPresentation() ? 'playing' : snapshot.phase;
@@ -557,16 +768,17 @@ export class GameUI {
   private renderHeroes(heroes: readonly HeroState[]): void {
     const dock = this.root.querySelector<HTMLElement>('[data-hero-dock]');
     if (!dock) return;
-    const renderKey = JSON.stringify([this.controller.selection, this.controller.armedAbility, heroes.map((hero) => [Math.ceil(hero.ultimateCooldown), Math.ceil(hero.hp), Math.ceil(hero.maxHp), hero.alive, Math.ceil(hero.respawnTime), hero.engagedEnemyUid, hero.level, hero.xp, hero.ownKills, hero.milestones, hero.starseedPrimed])]);
+    const renderKey = JSON.stringify([this.controller.selection, this.controller.armedSpell, heroes.map((hero) => [hero.spellCooldowns, hero.unlockedSpells, hero.artifact, Math.ceil(hero.hp), Math.ceil(hero.maxHp), hero.alive, Math.ceil(hero.respawnTime), hero.engagedEnemyUid, hero.level, hero.xp, hero.ownKills, hero.milestones, hero.starseedPrimed])]);
     if (renderKey === this.lastHeroDock) return;
     this.lastHeroDock = renderKey;
     dock.innerHTML = heroes.map((hero, index) => {
       const selected = this.controller.selection.kind === 'hero' && this.controller.selection.heroId === hero.id;
-      const cooldown = Math.ceil(hero.ultimateCooldown);
       const charge = Math.max(0, 1 - hero.ultimateCooldown / hero.ultimateMax);
       const health = Math.max(0, hero.hp / hero.maxHp);
       const respawn = Math.ceil(hero.respawnTime);
       const xp = heroXpProgress(hero.level, hero.xp);
+      const activeSpells = heroSpellsForHero(hero.id).filter((spell): spell is ReturnType<typeof heroSpellSpec> & { id: HeroActiveSpellId; kind: 'active' } => spell.kind === 'active' && hero.unlockedSpells.includes(spell.id));
+      const casting = this.controller.armedSpell?.heroId === hero.id;
       const maxLevel = hero.level >= HERO_LEVEL_THRESHOLDS.length;
       const milestoneLevels = [2, 4, 6];
       const milestonePips = milestoneLevels.map((level, milestoneIndex) => {
@@ -574,12 +786,18 @@ export class GameUI {
         const label = milestone ? HERO_MILESTONE_NAMES[milestone] : `Unlocks at level ${level}`;
         return `<i class="hero-milestone ${hero.level >= level ? 'is-earned' : ''}" title="${label}" aria-label="${label}"></i>`;
       }).join('');
-      return `<article class="hero-card panel ${selected ? 'is-selected' : ''} ${hero.alive ? '' : 'is-down'}" data-hero-card="${hero.id}" style="--hero:#${hero.accent.toString(16).padStart(6, '0')}">
+      const spellButtons = activeSpells.map((spell) => {
+        const cooldown = Math.ceil(hero.spellCooldowns[spell.id]);
+        const armed = this.controller.armedSpell?.heroId === hero.id && this.controller.armedSpell.spellId === spell.id;
+        const verb = spell.targeting === 'self' ? 'Invoke' : 'Cast';
+        return `<button class="ability-button ${armed ? 'is-armed' : ''}" data-action="spell" data-hero="${hero.id}" data-spell="${spell.id}" ${cooldown > 0 || !hero.alive ? 'disabled' : ''} aria-label="${hero.alive ? `${verb} ${spell.name} — ${hero.name.split(' • ')[0]}` : `${hero.name} respawns in ${respawn}`}" aria-pressed="${armed}" title="${spell.description}">
+          <span class="ability-glyph">${spellGlyph[spell.id]}</span><strong>${cooldown > 0 ? cooldown : spell.targeting === 'self' ? 'USE' : 'CAST'}</strong><b>${spellShortcut[spell.id]}</b>
+        </button>`;
+      }).join('');
+      return `<article class="hero-card panel ${selected ? 'is-selected' : ''} ${casting ? 'is-casting' : ''} ${activeSpells.length > 1 ? 'has-multiple-spells' : ''} ${hero.alive ? '' : 'is-down'}" data-hero-card="${hero.id}" style="--hero:#${hero.accent.toString(16).padStart(6, '0')}">
         <button class="hero-portrait" data-action="hero" data-hero="${hero.id}" aria-label="Select ${hero.name} • ${hero.alive ? `${Math.ceil(hero.hp)} health` : `respawns in ${respawn}` }" title="${hero.name}"><img src="${assetUrl(`assets/heroes/${hero.id}.png`)}" alt="" draggable="false"><i class="hero-charge" style="--charge:${charge}"></i><span class="hero-health" style="--health:${health}"></span>${hero.alive ? '' : `<strong class="hero-respawn">${respawn}</strong>`}</button>
         <div class="hero-copy"><small><span class="hero-rank-label">CHAMPION ${index + 1} • </span><strong data-hero-level>LV ${hero.level}</strong></small><b>${hero.name.split(' • ')[0]}</b><span data-hero-hp>HP ${Math.ceil(hero.hp)} / ${Math.ceil(hero.maxHp)}</span><div class="hero-xp-row"><span data-hero-xp>${maxLevel ? `${hero.xp} / ${hero.xp} MASTERED` : `${xp.current} / ${xp.required} XP`}</span><em>${milestonePips}</em></div><div class="hero-xp-track" role="progressbar" aria-label="${hero.name} experience" aria-valuemin="0" aria-valuemax="${xp.required}" aria-valuenow="${xp.current}"><i style="--xp:${xp.ratio}"></i></div></div>
-        <button class="ability-button ${this.controller.armedAbility === hero.id ? 'is-armed' : ''}" data-action="ability" data-hero="${hero.id}" ${cooldown > 0 || !hero.alive ? 'disabled' : ''} aria-label="${hero.alive ? `Use ${hero.name} ultimate` : `${hero.name} respawns in ${respawn}`}">
-          <span>${hero.id === 'kael' ? '❈' : '✧'}</span><b>${hero.alive ? (cooldown > 0 ? cooldown : index + 1) : respawn}</b>
-        </button>
+        <div class="hero-spell-stack">${spellButtons}</div>
       </article>`;
     }).join('');
   }

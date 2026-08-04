@@ -740,8 +740,8 @@ export class AudioDirector {
       this.criticalCue('wave', () => this.waveHorn(event.bonus > 0));
     } else if (event.type === 'wave-cleared') {
       this.rewardCadence();
-    } else if (event.type === 'ability') {
-      event.hero === 'kael' ? this.kaelAbility(this.worldPan(event.point.x)) : this.lyraAbility(this.worldPan(event.point.x));
+    } else if (event.type === 'hero-spell-cast') {
+      this.heroSpellSound(event);
     } else if (event.type === 'boss-telegraph') {
       this.criticalCue('boss', () => this.bossWarning(this.worldPan(event.point.x)));
     } else if (event.type === 'tower-disabled') {
@@ -888,6 +888,30 @@ export class AudioDirector {
   private lyraAbility(pan: number): void {
     this.playSample('glass', pan, .58, .82);
     this.playSample('bell', -pan * .4, .44, 1.08);
+  }
+
+  private heroSpellSound(event: Extract<GameEvent, { type: 'hero-spell-cast' }>): void {
+    const pan = this.worldPan(event.point.x);
+    switch (event.spell) {
+      case 'rift-quake':
+        this.kaelAbility(pan);
+        if (this.context) this.toneTransient(this.context.currentTime, 54, .48, .12, 'sfx', pan, .1, 'triangle', -23, 1);
+        break;
+      case 'warden-pulse':
+        this.playSample('heavySoft', pan, .42, .94);
+        this.playSample('confirm', -pan * .35, .34, 1.04);
+        this.defer(() => this.playSample('glass', pan * .45, .2, .84), 95);
+        break;
+      case 'starfall':
+        this.lyraAbility(pan);
+        this.defer(() => this.playSample('glass', -pan * .25, .26, 1.24), 105);
+        break;
+      case 'falling-constellation':
+        this.playSample('glass', pan, .52, 1.16);
+        this.defer(() => this.playSample('bell', -pan * .5, .42, .92), 80);
+        this.defer(() => this.playSample('glass', pan * .2, .3, 1.38), 175);
+        break;
+    }
   }
 
   private breakerSnap(pan: number): void {

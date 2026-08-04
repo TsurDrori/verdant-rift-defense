@@ -24,6 +24,10 @@ export const ASSETS = {
     skitter: 'enemy.actions.skitter', marauder: 'enemy.actions.marauder', wisp: 'enemy.actions.wisp',
     brute: 'enemy.actions.brute', bloomlord: 'enemy.actions.bloomlord',
   },
+  vfx: {
+    riftQuakeFracture: 'vfx.rift-quake-fracture',
+    starfallShards: 'vfx.starfall-shards',
+  },
 } as const;
 
 export const SPRITESHEETS = {
@@ -47,4 +51,6 @@ export const SPRITESHEETS = {
 
 export const ASSET_PATHS = {
   [ASSETS.environment.verdantRift]: assetUrl('assets/environment/verdant-rift.png'),
+  [ASSETS.vfx.riftQuakeFracture]: assetUrl('assets/vfx/rift-quake-fracture-v1.png'),
+  [ASSETS.vfx.starfallShards]: assetUrl('assets/vfx/starfall-shards-v1.png'),
 } as const;

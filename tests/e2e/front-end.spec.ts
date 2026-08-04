@@ -20,7 +20,8 @@ test('front end exposes campaign, hero, progression, guide, and settings surface
   await page.getByRole('button', { name: /Heroes/ }).click();
   await page.locator('[data-menu-hero="lyra"]').click();
   await expect(page.getByRole('heading', { name: 'Lyra' })).toBeVisible();
-  await expect(page.locator('.hero-ability').getByText('Falling Constellation', { exact: true })).toBeVisible();
+  await expect(page.locator('.hero-ability').getByText('Starfall', { exact: true })).toBeVisible();
+  await expect(page.locator('.hero-mastery').getByText('Falling Constellation', { exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: /Campaign/ }).click();
   await page.getByRole('button', { name: /Stage 2: Rootbound Crossing/ }).click();

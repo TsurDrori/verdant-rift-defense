@@ -1,4 +1,5 @@
 import { assetUrl } from '../game/assets/url';
+import { heroSpellsForHero } from '../game/content/heroProgression';
 import type { CampaignProfile } from '../game/campaign/CampaignProfile';
 import {
   CAMPAIGN_STAGES,
@@ -128,6 +129,9 @@ function renderCampaign(state: FrontEndRenderState): string {
 
 function renderHeroes(state: FrontEndRenderState): string {
   const selected = heroById(state.selectedHeroId);
+  const masterySpells = selected.id === 'kael' || selected.id === 'lyra'
+    ? heroSpellsForHero(selected.id).filter((spell) => spell.unlockLevel > 1)
+    : [];
   return `
     <section class="heroes-view menu-view" aria-labelledby="front-end-title">
       <header class="menu-view-heading"><div><small>THE RIFT ALLIANCE</small><h1 id="front-end-title" tabindex="-1">Champion hall</h1></div><div class="roster-count"><b>2 / 2</b><small>ACTIVE SLOTS</small></div></header>
@@ -143,7 +147,11 @@ function renderHeroes(state: FrontEndRenderState): string {
           <div class="hero-biography"><small>${selected.unlockCopy.toUpperCase()}</small><h2>${selected.name}</h2><h3>${selected.epithet}</h3><p>${selected.summary}</p><span class="role-chip">${selected.role}</span></div>
           <div class="hero-ratings" aria-label="Hero ratings">${[['Attack', selected.attack], ['Defense', selected.defense], ['Control', selected.control]].map(([label, value]) => `<span><small>${label}</small><i>${Array.from({ length: 5 }, (_, index) => `<b class="${index < Number(value) ? 'is-filled' : ''}"></b>`).join('')}</i></span>`).join('')}</div>
           <section class="hero-ability"><span>✦</span><div><small>SIGNATURE COMMAND</small><b>${selected.ability}</b><p>${selected.abilityDescription}</p></div></section>
-          <section class="hero-mastery"><header><small>BATTLE MASTERY</small><b>Resets each mission</b></header><div>${selected.milestones.map((milestone, index) => `<span><i>${index + 1}</i><b>${milestone}</b><small>Level ${[2, 4, 6][index]}</small></span>`).join('')}</div></section>
+          <section class="hero-mastery"><header><small>BATTLE MASTERY</small><b>Own kills • resets each mission</b></header><div>${selected.milestones.map((milestone, index) => {
+            const spell = masterySpells[index];
+            const level = spell?.unlockLevel ?? [2, 4, 6][index];
+            return `<span><i>${index + 1}</i><b>${spell?.name ?? milestone}</b><small>Level ${level}</small>${spell ? `<p>${spell.description}</p>` : ''}</span>`;
+          }).join('')}</div></section>
         </article>
       </div>
     </section>`;

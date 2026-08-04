@@ -1,4 +1,4 @@
-import type { DamageType, EnemyId, HeroId, TowerBranch, TowerId } from '../content/types';
+import type { DamageType, EnemyId, HeroActiveSpellId, HeroArtifactId, HeroId, HeroMilestoneId, HeroSpellId, TowerBranch, TowerId } from '../content/types';
 import type { Vec2 } from './geometry';
 
 export interface EnemyState extends Vec2 {
@@ -31,7 +31,7 @@ export interface EnemyState extends Vec2 {
 
 export type TargetPriority = 'first' | 'strong' | 'flying';
 export type ProjectileStyle = TowerId | HeroId | 'impact';
-export type HeroMilestone = 'riftbrand' | 'warden-pulse' | 'living-bulwark' | 'astral-echo' | 'falling-constellation' | 'starseed';
+export type HeroMilestone = HeroMilestoneId;
 export type DamageOwner =
   | { kind: 'hero'; heroId: HeroId; channel: 'basic' | 'ultimate' | 'magic' }
   | { kind: 'tower'; towerUid: number }
@@ -86,6 +86,12 @@ export interface HeroState extends Vec2 {
   xp: number;
   ownKills: number;
   milestones: HeroMilestone[];
+  /** Run-scoped spell book derived only from personal-kill level progression. */
+  unlockedSpells: HeroSpellId[];
+  /** Authoritative simulation cooldowns; inactive or foreign spell keys stay zero. */
+  spellCooldowns: Record<HeroActiveSpellId, number>;
+  /** Optional briefing choice. Artifacts never drop or level during a run. */
+  artifact: HeroArtifactId | null;
   basicStrikeCount: number;
   starseedPrimed: boolean;
   /** True after the player deliberately assigns this run's guard anchor. */
@@ -142,7 +148,8 @@ export type GameEvent =
   | { type: 'tower-sold'; towerUid: number; refund: number }
   | { type: 'wave-started'; wave: number; bonus: number }
   | { type: 'wave-cleared'; wave: number }
-  | { type: 'ability'; hero: HeroId; point: Vec2 }
+  | { type: 'hero-spell-cast'; hero: HeroId; spell: HeroActiveSpellId; point: Vec2; radius: number; targets: readonly number[] }
+  | { type: 'hero-artifact-equipped'; hero: HeroId; artifact: HeroArtifactId | null }
   | { type: 'hero-xp'; hero: HeroId; enemyUid: number; amount: number; xp: number; ownKills: number }
   | { type: 'hero-level-up'; hero: HeroId; level: number; point: Vec2; unlocked?: HeroMilestone }
   | { type: 'boss-telegraph'; source: Vec2; point: Vec2; radius: number; duration: number; label: string }

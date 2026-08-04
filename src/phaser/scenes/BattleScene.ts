@@ -1,6 +1,5 @@
 import Phaser from 'phaser';
 import { ASSETS } from '../../game/assets/manifest';
-import { heroAbilitySpec } from '../../game/content/heroProgression';
 import { BUILD_PADS, PATH_POINTS } from '../../game/simulation/geometry';
 import type { AttackPresentationEvent, GameEvent, ProjectileStyle } from '../../game/simulation/state';
 import { GameController } from '../adapters/GameController';
@@ -21,6 +20,7 @@ import {
   refreshHeroView,
   refreshTowerView,
 } from '../view/EntityViews';
+import { SpellEffects } from '../view/SpellEffects';
 
 export class BattleScene extends Phaser.Scene {
   private controller: GameController;
@@ -30,13 +30,14 @@ export class BattleScene extends Phaser.Scene {
   private heroViews = new Map<string, Phaser.GameObjects.Container>();
   private padRings: Phaser.GameObjects.Container[] = [];
   private rangeRing?: Phaser.GameObjects.Arc;
+  private spellEffectRing?: Phaser.GameObjects.Arc;
   private towerFocusRing?: Phaser.GameObjects.Ellipse;
   private gateValueText?: Phaser.GameObjects.Text;
   private activeBossTelegraphs = 0;
   private bossPresent = false;
   private bossArrivalAnnouncements = 0;
   private bossTelegraphCancel = new Map<string, () => void>();
-  private friendlyAbilityFx = new Set<Phaser.GameObjects.Container | Phaser.GameObjects.Graphics>();
+  private spellEffects?: SpellEffects;
   private activeProjectileFx = 0;
   private peakProjectileFx = 0;
   private enemyFxReduced = false;
@@ -48,6 +49,7 @@ export class BattleScene extends Phaser.Scene {
   constructor(controller: GameController) { super('battle'); this.controller = controller; }
 
   create(): void {
+    this.spellEffects = new SpellEffects(this);
     this.cameras.main.setBackgroundColor(0x071310);
     this.add.image(800, 450, ASSETS.environment.verdantRift).setDisplaySize(1600, 900).setDepth(0);
     this.add.rectangle(800, 450, 1600, 900, 0x071410, 0.08).setDepth(1);
@@ -58,7 +60,12 @@ export class BattleScene extends Phaser.Scene {
     this.createRouteCues();
     this.createPads();
     this.createHeroes();
-    this.rangeRing = this.add.circle(0, 0, 100, 0x7ee4cf, 0.08).setStrokeStyle(2, 0xb8f4d9, 0.65).setVisible(false).setDepth(18);
+    this.rangeRing = this.add.circle(0, 0, 100, 0x7ee4cf, 0.08)
+      .setName('spell-cast-range-preview').setData('previewKind', 'cast-range')
+      .setStrokeStyle(2, 0xb8f4d9, 0.65).setVisible(false).setDepth(18);
+    this.spellEffectRing = this.add.circle(0, 0, 100, 0xe1b4ff, 0.08)
+      .setName('spell-effect-radius-preview').setData('previewKind', 'effect-radius')
+      .setStrokeStyle(4, 0xffefbc, 0.95).setVisible(false).setDepth(19);
     this.towerFocusRing = this.add.ellipse(0, 0, 88, 34, 0x8ff0c1, 0.08).setStrokeStyle(3, 0xffe493, 0.94).setVisible(false).setDepth(29);
     this.tweens.add({ targets: this.towerFocusRing, scaleX: 1.14, scaleY: 1.08, alpha: { from: 0.92, to: 0.38 }, duration: 680, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]) => {
@@ -254,6 +261,7 @@ export class BattleScene extends Phaser.Scene {
       let view = this.enemyViews.get(enemy.uid);
       if (!view) {
         view = createEnemyView(this, enemy);
+        view.setName(`enemy-view-${enemy.uid}`);
         view.setData('postFxEnabled', true);
         this.enemyViews.set(enemy.uid, view);
       }
@@ -381,25 +389,58 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private syncSelection(): void {
-    if (!this.rangeRing || !this.towerFocusRing) return;
+    if (!this.rangeRing || !this.spellEffectRing || !this.towerFocusRing) return;
     const selection = this.controller.selection;
     if (selection.kind === 'tower') {
       const tower = this.controller.selectedTower();
-      if (!tower) { this.rangeRing.setVisible(false); this.towerFocusRing.setVisible(false); return; }
+      if (!tower) { this.rangeRing.setVisible(false); this.spellEffectRing.setVisible(false); this.towerFocusRing.setVisible(false); return; }
       const point = BUILD_PADS[tower.padIndex]!;
       const definition = this.controller.towerDefinition(tower.type);
       const levelStats = tower.level === 1 ? undefined : definition.upgrades[tower.level - 2];
       const branchScale = tower.branch ? definition.branches[tower.branch].rangeMultiplier : 1;
-      this.rangeRing.setPosition(point.x, point.y).setRadius((levelStats?.range ?? definition.range) * branchScale).setVisible(true);
+      this.rangeRing.setPosition(point.x, point.y).setRadius((levelStats?.range ?? definition.range) * branchScale)
+        .setFillStyle(0x7ee4cf, 0.08).setStrokeStyle(2, 0xb8f4d9, 0.65).setVisible(true);
+      this.spellEffectRing.setVisible(false);
       this.towerFocusRing.setPosition(point.x, point.y + 12).setVisible(true);
       this.towerViews.forEach((view, uid) => view.setData('isSelected', uid === tower.uid));
     } else if (selection.kind === 'hero') {
       const hero = this.controller.snapshot().heroes.find((candidate) => candidate.id === selection.heroId);
-      if (hero) this.rangeRing.setPosition(hero.x, hero.y).setRadius(this.controller.armedAbility ? heroAbilitySpec(hero.id, hero.level).castRange : hero.range).setVisible(true);
+      const armed = this.controller.armedSpell;
+      const targeting = armed && armed.heroId === selection.heroId
+        ? this.controller.getHeroSpellTargeting(armed.heroId, armed.spellId)
+        : null;
+      if (hero && targeting?.targeting === 'point') {
+        const lyra = hero.id === 'lyra';
+        this.rangeRing.setPosition(hero.x, hero.y).setRadius(targeting.castRange)
+          .setData('spell', armed?.spellId).setData('authoritativeRadius', targeting.castRange)
+          .setFillStyle(lyra ? 0x6f3fa0 : 0x2f9f84, 0.035)
+          .setStrokeStyle(2.5, lyra ? 0xe1b4ff : 0xb8f4d9, 0.84).setVisible(true);
+
+        const preview = this.controller.spellTargetPreview;
+        if (preview?.point && preview.heroId === hero.id && preview.spellId === armed?.spellId) {
+          const valid = preview.valid !== false;
+          const color = valid ? (lyra ? 0xffe6a9 : 0xd8ffb0) : 0xff6f72;
+          this.spellEffectRing.setPosition(preview.point.x, preview.point.y).setRadius(targeting.effectRadius)
+            .setData('spell', armed?.spellId).setData('authoritativeRadius', targeting.effectRadius).setData('valid', valid)
+            .setFillStyle(valid ? (lyra ? 0x9e63d2 : 0x65d5a6) : 0x8d2532, valid ? 0.075 : 0.055)
+            .setStrokeStyle(4, color, 0.96).setVisible(true);
+        } else {
+          this.spellEffectRing.setVisible(false);
+        }
+      } else if (hero) {
+        this.rangeRing.setPosition(hero.x, hero.y).setRadius(hero.range)
+          .setData('spell', undefined).setData('authoritativeRadius', hero.range)
+          .setFillStyle(hero.color, 0.055).setStrokeStyle(2, hero.accent, 0.7).setVisible(true);
+        this.spellEffectRing.setVisible(false);
+      } else {
+        this.rangeRing.setVisible(false);
+        this.spellEffectRing.setVisible(false);
+      }
       this.towerFocusRing.setVisible(false);
       this.towerViews.forEach((view) => view.setData('isSelected', false));
     } else {
       this.rangeRing.setVisible(false);
+      this.spellEffectRing.setVisible(false);
       this.towerFocusRing.setVisible(false);
       this.towerViews.forEach((view) => view.setData('isSelected', false));
     }
@@ -477,8 +518,20 @@ export class BattleScene extends Phaser.Scene {
     } else if (event.type === 'tower-built') {
       const point = BUILD_PADS[event.padIndex]!;
       this.flashImpact(point.x, point.y, 0xffdd86, 44);
-    } else if (event.type === 'ability') {
-      this.abilityFx(event.hero, event.point.x, event.point.y);
+    } else if (event.type === 'hero-spell-cast') {
+      const hero = this.controller.snapshot().heroes.find((candidate) => candidate.id === event.hero);
+      const origin = this.heroViews.get(event.hero);
+      if (hero) {
+        this.spellEffects?.cast({
+          hero: event.hero,
+          spell: event.spell,
+          source: { x: origin?.x ?? hero.x, y: origin?.y ?? hero.y },
+          target: event.point,
+          radius: event.radius,
+          reducedMotion: document.documentElement.classList.contains('reduce-motion'),
+          suppressed: this.activeBossTelegraphs > 0,
+        });
+      }
     } else if (event.type === 'boss-telegraph') {
       this.bossTelegraph(event.source.x, event.source.y, event.point.x, event.point.y, event.radius, event.duration, event.label);
     } else if (event.type === 'tower-disabled') {
@@ -638,6 +691,11 @@ export class BattleScene extends Phaser.Scene {
     deferredPresentationEvents: number;
     watchdogHealthy: boolean;
     bossArrivalAnnouncements: number;
+    activeSpellFx: number;
+    peakSpellFx: number;
+    spellFxObjects: number;
+    spellFxCompleted: number;
+    spellFxDropped: number;
   } {
     const timing = this.controller.simulation.getTimingDiagnostics();
     const presentation = this.controller.presentationDiagnostics();
@@ -648,6 +706,7 @@ export class BattleScene extends Phaser.Scene {
     const tweens = this.tweens.getTweens().length;
     const clock = this.time as unknown as { _active?: Phaser.Time.TimerEvent[]; _pendingInsertion?: Phaser.Time.TimerEvent[] };
     const timers = (clock._active?.length ?? 0) + (clock._pendingInsertion?.length ?? 0);
+    const spellFx = this.spellEffects?.getDiagnostics();
     return {
       activeProjectiles: this.activeProjectileFx,
       peakProjectiles: this.peakProjectileFx,
@@ -665,8 +724,14 @@ export class BattleScene extends Phaser.Scene {
       pendingLethals: presentation.pendingLethals,
       deferredPresentationEvents: presentation.deferredEvents,
       watchdogHealthy: simulationDebtMs <= 500.01 && this.activeProjectileFx <= 32
-        && presentation.pendingLethals <= 32 && tweens < 500 && timers < 500,
+        && presentation.pendingLethals <= 32 && tweens < 500 && timers < 500
+        && (spellFx?.activeObjects ?? 0) < 260,
       bossArrivalAnnouncements: this.bossArrivalAnnouncements,
+      activeSpellFx: spellFx?.activeCasts ?? 0,
+      peakSpellFx: spellFx?.peakCasts ?? 0,
+      spellFxObjects: spellFx?.activeObjects ?? 0,
+      spellFxCompleted: spellFx?.castsCompleted ?? 0,
+      spellFxDropped: spellFx?.castsDropped ?? 0,
     };
   }
 
@@ -741,35 +806,9 @@ export class BattleScene extends Phaser.Scene {
     this.time.delayedCall(380, () => sparks.destroy());
   }
 
-  private abilityFx(hero: string, x: number, y: number): void {
-    const color = hero === 'kael' ? 0x72f2ce : 0xe1a5ff;
-    const origin = this.heroViews.get(hero);
-    if (origin) {
-      const trace = this.add.graphics().setDepth(103).lineStyle(7,0x4a235f,.6).beginPath().moveTo(origin.x,origin.y-36).lineTo(Phaser.Math.Linear(origin.x,x,.52),Phaser.Math.Linear(origin.y-36,y,.52)-34).lineTo(x,y).strokePath();
-      trace.lineStyle(3,hero === 'lyra' ? 0xffefd0 : color,.94).beginPath().moveTo(origin.x,origin.y-36).lineTo(Phaser.Math.Linear(origin.x,x,.52),Phaser.Math.Linear(origin.y-36,y,.52)-34).lineTo(x,y).strokePath();
-      this.tweens.add({ targets: trace, alpha: 0, duration: 480, onComplete:()=>trace.destroy() });
-      this.friendlyAbilityFx.add(trace); trace.once(Phaser.GameObjects.Events.DESTROY,()=>this.friendlyAbilityFx.delete(trace));
-    }
-    if (hero === 'lyra') {
-      const weave = this.add.container(x,y).setDepth(105);
-      const graphics = this.add.graphics();
-      graphics.fillStyle(0x8b4fc7,.18).fillPoints([{x:-62,y:8},{x:-19,y:-42},{x:43,y:-29},{x:68,y:15},{x:18,y:48},{x:-49,y:37}],true);
-      graphics.fillStyle(0x6d35a8,.22).fillEllipse(18,14,84,33);
-      graphics.lineStyle(9,0x9f63e8,.98).beginPath().arc(-27,7,53,2.45,5.82,false).strokePath();
-      graphics.lineStyle(6,0xffefd0,.96).beginPath().arc(27,-8,73,-.72,1.72,false).strokePath();
-      const fracture = this.add.polygon(3,-1,[0,-24,7,-7,25,-2,9,7,12,25,0,11,-17,20,-10,3,-27,-8,-6,-9],0xe5b3ff,.48).setStrokeStyle(3,0xffefd0,.96);
-      weave.add([graphics,fracture]).setScale(.78).setRotation(-.3);
-      this.friendlyAbilityFx.add(weave); weave.once(Phaser.GameObjects.Events.DESTROY,()=>this.friendlyAbilityFx.delete(weave));
-      this.tweens.add({targets:weave,scale:1.2,angle:38,duration:420,ease:'Cubic.Out',onComplete:()=>this.tweens.add({targets:weave,scale:1.55,angle:74,alpha:0,duration:620,ease:'Cubic.In',onComplete:()=>weave.destroy()})});
-    } else {
-      for (let index=0;index<12;index+=1) { const angle=index*Math.PI/6; const root=this.add.polygon(x+Math.cos(angle)*24,y+Math.sin(angle)*18,[0,-18,6,7,0,13,-6,7],index%2?0x9def93:color,.76).setDepth(105).setRotation(angle+Math.PI/2); this.tweens.add({targets:root,x:x+Math.cos(angle)*132,y:y+Math.sin(angle)*104,scaleY:1.45,alpha:0,duration:560+index*12,ease:'Quad.Out',onComplete:()=>root.destroy()}); }
-    }
-    this.cameras.main.shake(220, 0.003);
-  }
-
   private bossTelegraph(sx: number, sy: number, x: number, y: number, radius: number, duration: number, label: string): void {
     this.activeBossTelegraphs += 1;
-    this.friendlyAbilityFx.forEach((effect)=>effect.setAlpha(Math.min(effect.alpha,.38)));
+    this.spellEffects?.suppressActive();
     const p1 = {x:Phaser.Math.Linear(sx,x,.28),y:Phaser.Math.Linear(sy,y,.28)-30};
     const p2 = {x:Phaser.Math.Linear(sx,x,.52),y:Phaser.Math.Linear(sy,y,.52)+23};
     const p3 = {x:Phaser.Math.Linear(sx,x,.76),y:Phaser.Math.Linear(sy,y,.76)-18};

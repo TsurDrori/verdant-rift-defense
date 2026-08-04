@@ -1,6 +1,7 @@
 import { ENEMIES } from '../../game/content/enemies';
+import { HERO_PRIMARY_SPELL, heroSpellSpec } from '../../game/content/heroProgression';
 import { TOWERS } from '../../game/content/towers';
-import type { HeroId, TowerBranch, TowerId } from '../../game/content/types';
+import type { HeroActiveSpellId, HeroArtifactId, HeroId, TowerBranch, TowerId } from '../../game/content/types';
 import { WAVES } from '../../game/content/waves';
 import { GameSimulation } from '../../game/simulation/GameSimulation';
 import type { Vec2 } from '../../game/simulation/geometry';
@@ -13,10 +14,24 @@ export type Selection =
   | { kind: 'tower'; towerUid: number }
   | { kind: 'hero'; heroId: HeroId };
 
+export type SpellTargetingKind = 'point' | 'self';
+
+export interface ArmedHeroSpell {
+  heroId: HeroId;
+  spellId: HeroActiveSpellId;
+  targeting: SpellTargetingKind;
+}
+
+export interface SpellTargetPreview extends ArmedHeroSpell {
+  point?: Vec2;
+  valid?: boolean;
+}
+
 export class GameController extends EventTarget {
   readonly simulation = new GameSimulation();
   selection: Selection = { kind: 'none' };
-  armedAbility?: HeroId;
+  armedSpell?: ArmedHeroSpell;
+  spellTargetPreview?: SpellTargetPreview;
   private pendingPresentationLethals = 0;
   private deferredPresentationEvents: GameEvent[] = [];
   private runtimeReady = false;
@@ -29,8 +44,18 @@ export class GameController extends EventTarget {
     this.dispatchEvent(new Event('runtime-ready'));
   }
   setInsightLoadout(upgrades: readonly string[]): void { this.simulation.setInsightLoadout(upgrades); this.changed(); }
+  setHeroArtifactLoadout(loadout: Partial<Record<HeroId, HeroArtifactId | null>>): boolean {
+    const applied = this.simulation.setHeroArtifactLoadout(loadout);
+    if (applied) this.changed();
+    else this.invalidAction();
+    return applied;
+  }
   setDifficulty(difficulty: DifficultyId): void { this.simulation.setDifficulty(difficulty); this.changed(); }
-  update(delta: number): void { this.simulation.update(delta); this.changed(false); }
+  update(delta: number): void {
+    this.simulation.update(delta);
+    if (this.armedSpell && !this.armedHeroCanCast()) this.cancelSpellCast(false);
+    this.changed(false);
+  }
   discardElapsedTime(): void { this.simulation.discardElapsedTime(); }
   snapshot(): GameSnapshot { return this.simulation.getSnapshot(); }
   drainEvents(): GameEvent[] {
@@ -59,21 +84,26 @@ export class GameController extends EventTarget {
   enemyDefinition(id: keyof typeof ENEMIES) { return ENEMIES[id]; }
   nextWave() { return WAVES[this.snapshot().wave]; }
 
+  /** Compatibility surface for view code and diagnostics written before heroes had multiple spells. */
+  get armedAbility(): HeroId | undefined { return this.armedSpell?.heroId; }
+
+  isSpellCastMode(): boolean { return Boolean(this.armedSpell); }
+
   selectPad(padIndex: number): void {
+    if (this.armedSpell) return;
     const tower = this.snapshot().towers.find((candidate) => candidate.padIndex === padIndex);
     this.selection = tower ? { kind: 'tower', towerUid: tower.uid } : { kind: 'pad', padIndex };
-    this.armedAbility = undefined;
     this.changed();
   }
 
   selectTower(towerUid: number): void {
+    if (this.armedSpell) return;
     if (!this.snapshot().towers.some((tower) => tower.uid === towerUid)) return;
     this.selection = { kind: 'tower', towerUid };
-    this.armedAbility = undefined;
     this.changed();
   }
-  selectHero(heroId: HeroId): void { this.selection = { kind: 'hero', heroId }; this.armedAbility = undefined; this.changed(); }
-  clearSelection(): void { this.selection = { kind: 'none' }; this.armedAbility = undefined; this.changed(); }
+  selectHero(heroId: HeroId): void { if (this.armedSpell) return; this.selection = { kind: 'hero', heroId }; this.changed(); }
+  clearSelection(): void { this.selection = { kind: 'none' }; this.cancelSpellCast(false); this.changed(); }
 
   selectedTower(): TowerState | undefined {
     if (this.selection.kind !== 'tower') return undefined;
@@ -133,24 +163,78 @@ export class GameController extends EventTarget {
     this.changed();
     return started;
   }
-  togglePause(): void { this.simulation.togglePause(); this.changed(); }
+  togglePause(): void { this.cancelSpellCast(false); this.simulation.togglePause(); this.changed(); }
   toggleSpeed(): void { this.simulation.toggleSpeed(); this.changed(); }
 
   armAbility(id: HeroId): void {
+    this.armSpell(id, HERO_PRIMARY_SPELL[id]);
+  }
+
+  getHeroSpellTargeting(id: HeroId, spellId: HeroActiveSpellId): ReturnType<GameSimulation['getHeroSpellTargeting']> {
+    return this.simulation.getHeroSpellTargeting(id, spellId);
+  }
+
+  armSpell(id: HeroId, spellId: HeroActiveSpellId): void {
     const hero = this.snapshot().heroes.find((candidate) => candidate.id === id);
-    if (!hero || !hero.alive || hero.ultimateCooldown > 0) {
+    const spell = heroSpellSpec(spellId);
+    if (!hero || !hero.alive || hero.spellCooldowns[spellId] > 0 || !hero.unlockedSpells.includes(spellId)) {
       this.invalidAction();
       return;
     }
-    this.armedAbility = this.armedAbility === id ? undefined : id;
+    if (this.armedSpell?.heroId === id && this.armedSpell.spellId === spellId) {
+      this.cancelSpellCast();
+      return;
+    }
     this.selection = { kind: 'hero', heroId: id };
+    if (spell.targeting === 'self') {
+      if (!this.useHeroSpell(id, spellId, hero)) this.invalidAction();
+      this.cancelSpellCast(false);
+      this.changed();
+      return;
+    }
+    this.armedSpell = { heroId: id, spellId, targeting: 'point' };
+    this.spellTargetPreview = { ...this.armedSpell };
+    this.dispatchEvent(new CustomEvent<ArmedHeroSpell>('cast-mode-change', { detail: this.armedSpell }));
     this.changed();
   }
 
+  cancelSpellCast(changed = true): boolean {
+    if (!this.armedSpell) return false;
+    this.armedSpell = undefined;
+    this.spellTargetPreview = undefined;
+    this.dispatchEvent(new CustomEvent<undefined>('cast-mode-change', { detail: undefined }));
+    if (changed) this.changed();
+    return true;
+  }
+
+  previewSpellTarget(point?: Vec2): SpellTargetPreview | undefined {
+    if (!this.armedSpell) return undefined;
+    const preview: SpellTargetPreview = {
+      ...this.armedSpell,
+      point,
+      valid: point ? this.canCastArmedSpellAt(point) : undefined,
+    };
+    const previous = this.spellTargetPreview;
+    const unchanged = previous?.point?.x === preview.point?.x
+      && previous?.point?.y === preview.point?.y
+      && previous?.valid === preview.valid
+      && previous?.heroId === preview.heroId
+      && previous?.spellId === preview.spellId;
+    this.spellTargetPreview = preview;
+    if (!unchanged) this.dispatchEvent(new CustomEvent<SpellTargetPreview>('spell-target-preview', { detail: preview }));
+    return preview;
+  }
+
   worldAction(point: Vec2): void {
-    if (this.armedAbility) {
-      if (this.simulation.useAbility(this.armedAbility, point)) this.armedAbility = undefined;
-      else this.invalidAction();
+    if (this.armedSpell) {
+      const armed = this.armedSpell;
+      if (this.canCastArmedSpellAt(point) && this.useHeroSpell(armed.heroId, armed.spellId, point)) {
+        this.cancelSpellCast(false);
+      } else {
+        this.previewSpellTarget(point);
+        this.dispatchEvent(new CustomEvent<SpellTargetPreview>('spell-target-invalid', { detail: this.spellTargetPreview! }));
+        this.invalidAction();
+      }
     } else if (this.selection.kind === 'hero') {
       this.simulation.moveHero(this.selection.heroId, point);
     } else {
@@ -165,7 +249,7 @@ export class GameController extends EventTarget {
   }
 
   nudgeSelectedHero(dx: number, dy: number): void {
-    if (this.selection.kind !== 'hero') return;
+    if (this.armedSpell || this.selection.kind !== 'hero') return;
     const heroId = this.selection.heroId;
     const selected = this.snapshot().heroes.find((candidate) => candidate.id === heroId);
     if (selected) this.simulation.moveHero(selected.id, { x: selected.x + dx, y: selected.y + dy });
@@ -186,14 +270,33 @@ export class GameController extends EventTarget {
    * applying an upgrade to a different, newly selected tower.
    */
   private actionTower(towerUid?: number): TowerState | undefined {
+    if (this.armedSpell) return undefined;
     const uid = towerUid ?? (this.selection.kind === 'tower' ? this.selection.towerUid : undefined);
     if (uid === undefined) return undefined;
     const tower = this.snapshot().towers.find((candidate) => candidate.uid === uid);
     if (tower) {
       this.selection = { kind: 'tower', towerUid: tower.uid };
-      this.armedAbility = undefined;
     }
     return tower;
+  }
+
+  private canCastArmedSpellAt(point: Vec2): boolean {
+    const armed = this.armedSpell;
+    if (!armed) return false;
+    if (!this.armedHeroCanCast()) return false;
+    return this.simulation.canUseHeroSpell(armed.heroId, armed.spellId, point);
+  }
+
+  private armedHeroCanCast(): boolean {
+    const armed = this.armedSpell;
+    if (!armed || this.snapshot().phase !== 'playing') return false;
+    const hero = this.snapshot().heroes.find((candidate) => candidate.id === armed.heroId);
+    if (!hero || !hero.alive || !hero.unlockedSpells.includes(armed.spellId)) return false;
+    return hero.spellCooldowns[armed.spellId] <= 0;
+  }
+
+  private useHeroSpell(heroId: HeroId, spellId: HeroActiveSpellId, point: Vec2): boolean {
+    return this.simulation.useHeroSpell(heroId, spellId, point);
   }
 
   private tacticalMutation<T>(enabled: boolean, action: () => T): T {

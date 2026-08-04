@@ -1,4 +1,5 @@
 import type { HeroId } from '../content/types';
+import { HERO_MILESTONE_NAMES, HERO_PRIMARY_SPELL, heroSpellSpec } from '../content/heroProgression';
 
 export type CampaignStageId = 'sunken-way' | 'rootbound-crossing' | 'glasswood' | 'cinder-grove' | 'hollow-crown';
 export type MenuHeroId = HeroId | 'seren' | 'orrik';
@@ -82,16 +83,16 @@ export const MENU_HEROES: readonly MenuHeroDefinition[] = [
   {
     id: 'kael', name: 'Kael', epithet: 'Rift Warden', role: 'Vanguard / control',
     summary: 'A durable line-holder who pins ground threats and turns sustained melee into area control.',
-    attack: 3, defense: 5, control: 4, ability: 'Verdant Reckoning',
-    abilityDescription: 'Detonates a defensive shockwave at the chosen point, punishing clustered ground enemies.',
-    milestones: ['Riftbrand', 'Warden Pulse', 'Living Bulwark'], playable: true, unlockCopy: 'Alliance founder',
+    attack: 3, defense: 5, control: 4, ability: heroSpellSpec(HERO_PRIMARY_SPELL.kael).name,
+    abilityDescription: heroSpellSpec(HERO_PRIMARY_SPELL.kael).description,
+    milestones: [HERO_MILESTONE_NAMES.riftbrand, HERO_MILESTONE_NAMES['warden-pulse'], HERO_MILESTONE_NAMES['living-bulwark']], playable: true, unlockCopy: 'Alliance founder',
   },
   {
     id: 'lyra', name: 'Lyra', epithet: 'Astral Huntress', role: 'Ranged / air',
     summary: 'A mobile ranged striker who can contest flying enemies and snowball through precise last hits.',
-    attack: 5, defense: 2, control: 3, ability: 'Falling Constellation',
-    abilityDescription: 'Calls down a concentrated astral barrage. Reposition her often to cover weak lanes.',
-    milestones: ['Astral Echo', 'Falling Constellation', 'Starseed'], playable: true, unlockCopy: 'Alliance founder',
+    attack: 5, defense: 2, control: 3, ability: heroSpellSpec(HERO_PRIMARY_SPELL.lyra).name,
+    abilityDescription: heroSpellSpec(HERO_PRIMARY_SPELL.lyra).description,
+    milestones: [HERO_MILESTONE_NAMES['astral-echo'], HERO_MILESTONE_NAMES['falling-constellation'], HERO_MILESTONE_NAMES.starseed], playable: true, unlockCopy: 'Alliance founder',
   },
   {
     id: 'seren', name: 'Seren', epithet: 'Briar Oracle', role: 'Support / denial',
