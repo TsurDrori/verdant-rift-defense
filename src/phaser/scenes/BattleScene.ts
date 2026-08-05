@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { ASSETS } from '../../game/assets/manifest';
-import { BUILD_PADS, PATH_POINTS } from '../../game/simulation/geometry';
+import { COMBAT_BALANCE } from '../../game/content/combatBalance';
+import { BUILD_PADS, pointInPathLane, projectPointToPath } from '../../game/simulation/geometry';
 import type { AttackPresentationEvent, GameEvent, ProjectileStyle } from '../../game/simulation/state';
 import { GameController } from '../adapters/GameController';
 import {
@@ -53,9 +54,7 @@ export class BattleScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor(0x071310);
     this.add.image(800, 450, ASSETS.environment.verdantRift).setDisplaySize(1600, 900).setDepth(0);
     this.add.rectangle(800, 450, 1600, 900, 0x071410, 0.08).setDepth(1);
-    const laneReadability = this.add.graphics().setDepth(2);
-    laneReadability.lineStyle(104, 0x071310, 0.075).strokePoints(PATH_POINTS as Phaser.Types.Math.Vector2Like[], false, false);
-    laneReadability.lineStyle(78, 0xffedbd, 0.042).strokePoints(PATH_POINTS as Phaser.Types.Math.Vector2Like[], false, false);
+    this.createAuthoritativeRoad();
     this.createAmbientFx();
     this.createRouteCues();
     this.createPads();
@@ -136,11 +135,49 @@ export class BattleScene extends Phaser.Scene {
       // The visible stone ring stays compact; only the forgiving input proxy grows.
       container.setName(`build-pad-hit-${index}`).setData('touchProxy', { width: 112, height: 112 });
       container.setSize(112, 112).setInteractive({ useHandCursor: true });
+      // The painted 74px stone ring remains an intentional pad selection. The
+      // larger invisible touch proxy below it may instead carry a selected hero
+      // along the road, so generosity never masquerades as visible geometry.
+      hover.setInteractive({ useHandCursor: true }).on('pointerdown', (pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+        event.stopPropagation();
+        if (!this.uiOwnsPointer(pointer)) this.controller.selectPad(index);
+      });
       container.on('pointerover', () => { hover.setFillStyle(0x9ce2b8, 0.14).setStrokeStyle(2.5, 0xbef5d4, 0.82); rune.setFillStyle(0xffe897, 0.95); container.setScale(1.08); });
       container.on('pointerout', () => { hover.setFillStyle(0x9ce2b8, 0).setStrokeStyle(2, 0xf4dda7, 0.1); rune.setFillStyle(0xc9e7bd, 0.75); container.setScale(1); });
-      container.on('pointerdown', (pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => { event.stopPropagation(); if (!this.uiOwnsPointer(pointer)) this.controller.selectPad(index); });
+      container.on('pointerdown', (pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+        event.stopPropagation();
+        if (!this.uiOwnsPointer(pointer) && !this.routeProxyToSelectedHero(pointer)) this.controller.selectPad(index);
+      });
       this.padRings.push(container);
     });
+  }
+
+  private createAuthoritativeRoad(): void {
+    const corridor = this.add.graphics().setDepth(2).setName('authoritative-road-corridor');
+    const steps = 96;
+    const centerline = Array.from({ length: steps + 1 }, (_, index) => pointInPathLane(index / steps, 0));
+    const leftEdge = Array.from({ length: steps + 1 }, (_, index) => pointInPathLane(index / steps, -COMBAT_BALANCE.lanes.halfWidth));
+    const rightEdge = Array.from({ length: steps + 1 }, (_, index) => pointInPathLane(index / steps, COMBAT_BALANCE.lanes.halfWidth));
+    corridor.setData('halfWidth', COMBAT_BALANCE.lanes.halfWidth).setData('source', 'PATH_POINTS');
+    // Thin exact boundaries reconcile the painted stones with navigation truth
+    // without laying an opaque polygon over the environment illustration.
+    corridor.lineStyle(1.5, 0xf0dfa3, 0.18).strokePoints(centerline, false, false);
+    corridor.lineStyle(2.25, 0xd9d49b, 0.44).strokePoints(leftEdge, false, false);
+    corridor.lineStyle(2.25, 0xa7d9b2, 0.44).strokePoints(rightEdge, false, false);
+    corridor.lineStyle(2, 0xe8dfad, 0.3);
+    for (let progress = 0.04; progress < 0.98; progress += 0.06) {
+      const inside = pointInPathLane(progress, -6);
+      const outside = pointInPathLane(progress, 6);
+      corridor.lineBetween(inside.x, inside.y, outside.x, outside.y);
+    }
+  }
+
+  private routeProxyToSelectedHero(pointer: Phaser.Input.Pointer): boolean {
+    if (this.controller.isSpellCastMode() || this.controller.selection.kind !== 'hero') return false;
+    const point = { x: pointer.worldX, y: pointer.worldY };
+    if (projectPointToPath(point).distance > COMBAT_BALANCE.lanes.halfWidth + 8) return false;
+    this.controller.worldAction(point);
+    return true;
   }
 
   private createAmbientFx(): void {
@@ -214,6 +251,10 @@ export class BattleScene extends Phaser.Scene {
           event.stopPropagation();
           if (!this.uiOwnsPointer(_pointer)) this.controller.selectTower(tower.uid);
         };
+        const selectTowerProxy = (_pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData): void => {
+          event.stopPropagation();
+          if (!this.uiOwnsPointer(_pointer) && !this.routeProxyToSelectedHero(_pointer)) this.controller.selectTower(tower.uid);
+        };
         const sprite = view.getData('sprite') as Phaser.GameObjects.Image;
         sprite.setInteractive({ pixelPerfect: true, alphaTolerance: 12, useHandCursor: true }).on('pointerdown', selectTower);
         // Preserve the painted foundation as a stable selection target after a
@@ -224,17 +265,17 @@ export class BattleScene extends Phaser.Scene {
           .setName(`tower-foundation-hit-${tower.uid}`)
           .setData('touchProxy', { width: 88, height: 52 })
           .setInteractive({ useHandCursor: true })
-          .on('pointerdown', selectTower);
+          .on('pointerdown', selectTowerProxy);
         // A generous, non-overlapping crown zone makes the intended selection
         // gesture forgiving even when the painted top has thin transparent gaps.
         const crownHit = this.add.zone(0, -68, 112, 120)
           .setName(`tower-crown-hit-${tower.uid}`)
           .setData('touchProxy', { width: 112, height: 120 })
           .setInteractive({ useHandCursor: true })
-          .on('pointerdown', selectTower);
-        view.add([foundationHit, crownHit]);
-        const selectionPlate = view.getData('selectionPlate') as Phaser.GameObjects.Ellipse;
-        selectionPlate.setInteractive({ useHandCursor: true }).on('pointerdown', selectTower);
+          .on('pointerdown', selectTowerProxy);
+        // Keep the invisible tolerance zones behind the opaque pixel-perfect
+        // sprite. Exact tower art selects; proxy-only road presses move heroes.
+        view.addAt([foundationHit, crownHit], 0);
         this.towerViews.set(tower.uid, view);
       }
       this.setTowerPostFx(view, !this.enemyFxReduced);

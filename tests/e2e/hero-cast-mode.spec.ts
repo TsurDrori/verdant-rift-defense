@@ -21,7 +21,7 @@ test('armed hero spell owns the world pointer instead of selecting an underlying
   await enterBattle(page);
   await page.getByRole('button', { name: /Cast Rift Quake.*Kael/ }).click();
 
-  await expect(page.locator('[data-hero-card="kael"] .ability-button')).toHaveClass(/is-armed/);
+  await expect(page.locator('[data-spell="rift-quake"]')).toHaveClass(/is-armed/);
   await expect(page.locator('[data-cast-command]')).toBeVisible();
   await expect(page.locator('html')).toHaveClass(/spell-cast-mode/);
   const canvas = await page.locator('canvas').boundingBox();
@@ -68,7 +68,7 @@ test('a valid cast passes through an interactive hero without selecting or movin
 
 test('Escape and secondary click cancel targeting and restore normal world selection', async ({ page }) => {
   await enterBattle(page);
-  const cast = page.getByRole('button', { name: /Cast Rift Quake.*Kael/ });
+  const cast = page.locator('[data-spell="rift-quake"]');
 
   await cast.click();
   await page.keyboard.press('Escape');
@@ -94,7 +94,7 @@ test('cast controls stay explicit and touch-sized on a portrait viewport', async
     expect(box!.height).toBeGreaterThanOrEqual(44);
   }
 
-  const kaelCast = page.getByRole('button', { name: /Cast Rift Quake.*Kael/ });
+  const kaelCast = page.locator('[data-spell="rift-quake"]');
   await kaelCast.click();
   await expect(kaelCast).toHaveAttribute('aria-pressed', 'true');
   const cancel = page.getByRole('button', { name: 'Cancel spell targeting' });
@@ -136,10 +136,10 @@ test('level-four heroes expose a second active spell without turning the HUD int
     controller.update(0);
   });
 
-  const card = page.locator('[data-hero-card="kael"]');
-  await expect(card.locator('[data-action="spell"]')).toHaveCount(2);
-  await expect(card.getByRole('button', { name: /Cast Rift Quake/ })).toBeVisible();
-  const pulse = card.getByRole('button', { name: /Invoke Warden's Pulse/ });
+  const commandBar = page.locator('[data-hero-command-bar]');
+  await expect(commandBar.locator('[data-hero="kael"][data-spell]')).toHaveCount(2);
+  await expect(commandBar.locator('[data-spell="rift-quake"]')).toBeVisible();
+  const pulse = commandBar.locator('[data-spell="warden-pulse"]');
   await expect(pulse).toBeVisible();
   expect((await pulse.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await pulse.click();

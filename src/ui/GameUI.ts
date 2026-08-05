@@ -155,6 +155,7 @@ export class GameUI {
         <section class="selection-panel panel" data-selection-panel aria-label="Tower controls"></section>
         <button class="panel-scroll-affordance panel" data-panel-scroll-cue data-action="panel-scroll" aria-label="Show more tower controls"><span>MORE CONTROLS</span><b>↓</b></button>
         <section class="hero-dock" data-hero-dock></section>
+        <nav class="hero-command-bar panel" data-hero-command-bar aria-label="Hero spell controls"></nav>
         <section class="cast-command panel" data-cast-command role="status" aria-live="assertive" aria-hidden="true">
           <span class="cast-command-sigil" data-cast-glyph>✦</span>
           <span><small data-cast-hero>HERO SPELL</small><b data-cast-name>Choose a target</b><em>Tap the battlefield • Esc or right-click cancels</em></span>
@@ -767,39 +768,83 @@ export class GameUI {
 
   private renderHeroes(heroes: readonly HeroState[]): void {
     const dock = this.root.querySelector<HTMLElement>('[data-hero-dock]');
-    if (!dock) return;
-    const renderKey = JSON.stringify([this.controller.selection, this.controller.armedSpell, heroes.map((hero) => [hero.spellCooldowns, hero.unlockedSpells, hero.artifact, Math.ceil(hero.hp), Math.ceil(hero.maxHp), hero.alive, Math.ceil(hero.respawnTime), hero.engagedEnemyUid, hero.level, hero.xp, hero.ownKills, hero.milestones, hero.starseedPrimed])]);
-    if (renderKey === this.lastHeroDock) return;
-    this.lastHeroDock = renderKey;
-    dock.innerHTML = heroes.map((hero, index) => {
+    const commandBar = this.root.querySelector<HTMLElement>('[data-hero-command-bar]');
+    if (!dock || !commandBar) return;
+    const activeSpellsFor = (hero: HeroState) => heroSpellsForHero(hero.id).filter((spell): spell is ReturnType<typeof heroSpellSpec> & { id: HeroActiveSpellId; kind: 'active' } => spell.kind === 'active' && hero.unlockedSpells.includes(spell.id));
+    // Only unlocks alter structure. Combat values are synchronized into stable
+    // nodes below, so a cooldown tick can never detach a button mid-press.
+    const structureKey = JSON.stringify(heroes.map((hero) => [hero.id, activeSpellsFor(hero).map((spell) => spell.id)]));
+    if (structureKey !== this.lastHeroDock) {
+      this.lastHeroDock = structureKey;
+      dock.innerHTML = heroes.map((hero, index) => `<article class="hero-card panel" data-hero-card="${hero.id}" style="--hero:#${hero.accent.toString(16).padStart(6, '0')}">
+        <button type="button" class="hero-card-hit" data-action="hero" data-hero="${hero.id}"></button>
+        <div class="hero-portrait" aria-hidden="true"><img src="${assetUrl(`assets/heroes/${hero.id}.png`)}" alt="" draggable="false"><i class="hero-charge" data-hero-charge></i><span class="hero-health" data-hero-health></span><strong class="hero-respawn" data-hero-respawn></strong></div>
+        <div class="hero-copy"><small><span class="hero-rank-label">CHAMPION ${index + 1} • </span><strong data-hero-level></strong></small><b>${hero.name.split(' • ')[0]}</b><span data-hero-hp></span><div class="hero-xp-row"><span data-hero-xp></span><em>${[2, 4, 6].map((level, milestoneIndex) => `<i class="hero-milestone" data-milestone="${milestoneIndex}" title="Unlocks at level ${level}" aria-label="Unlocks at level ${level}"></i>`).join('')}</em></div><div class="hero-xp-track" role="progressbar" aria-label="${hero.name} experience" aria-valuemin="0"><i data-hero-xp-fill></i></div></div>
+      </article>`).join('');
+      commandBar.innerHTML = heroes.flatMap((hero) => activeSpellsFor(hero).map((spell) => `<button type="button" class="ability-button hero-command-spell" data-action="spell" data-hero="${hero.id}" data-spell="${spell.id}" style="--hero:#${hero.accent.toString(16).padStart(6, '0')}" title="${spell.description}">
+        <small class="spell-owner">${hero.name.split(' • ')[0]}</small><span class="ability-glyph" data-spell-glyph>${spellGlyph[spell.id]}</span><strong data-spell-state></strong><b data-spell-key>${spellShortcut[spell.id]}</b>
+      </button>`)).join('');
+    }
+
+    for (const hero of heroes) {
+      const card = dock.querySelector<HTMLElement>(`[data-hero-card="${hero.id}"]`);
+      if (!card) continue;
       const selected = this.controller.selection.kind === 'hero' && this.controller.selection.heroId === hero.id;
+      const casting = this.controller.armedSpell?.heroId === hero.id;
+      const respawn = Math.ceil(hero.respawnTime);
       const charge = Math.max(0, 1 - hero.ultimateCooldown / hero.ultimateMax);
       const health = Math.max(0, hero.hp / hero.maxHp);
-      const respawn = Math.ceil(hero.respawnTime);
       const xp = heroXpProgress(hero.level, hero.xp);
-      const activeSpells = heroSpellsForHero(hero.id).filter((spell): spell is ReturnType<typeof heroSpellSpec> & { id: HeroActiveSpellId; kind: 'active' } => spell.kind === 'active' && hero.unlockedSpells.includes(spell.id));
-      const casting = this.controller.armedSpell?.heroId === hero.id;
       const maxLevel = hero.level >= HERO_LEVEL_THRESHOLDS.length;
-      const milestoneLevels = [2, 4, 6];
-      const milestonePips = milestoneLevels.map((level, milestoneIndex) => {
+      card.classList.toggle('is-selected', selected);
+      card.classList.toggle('is-casting', casting);
+      card.classList.toggle('is-down', !hero.alive);
+      const select = card.querySelector<HTMLButtonElement>('.hero-card-hit');
+      select?.setAttribute('aria-label', `Select ${hero.name} • ${hero.alive ? `${Math.ceil(hero.hp)} health` : `respawns in ${respawn}`}`);
+      select?.setAttribute('aria-pressed', String(selected));
+      select?.setAttribute('title', hero.name);
+      card.querySelector<HTMLElement>('[data-hero-charge]')?.style.setProperty('--charge', String(charge));
+      card.querySelector<HTMLElement>('[data-hero-health]')?.style.setProperty('--health', String(health));
+      const respawnLabel = card.querySelector<HTMLElement>('[data-hero-respawn]');
+      if (respawnLabel) { respawnLabel.textContent = String(respawn); respawnLabel.classList.toggle('is-visible', !hero.alive); }
+      const setCardText = (selector: string, value: string): void => { const node = card.querySelector<HTMLElement>(selector); if (node && node.textContent !== value) node.textContent = value; };
+      setCardText('[data-hero-level]', `LV ${hero.level}`);
+      setCardText('[data-hero-hp]', `HP ${Math.ceil(hero.hp)} / ${Math.ceil(hero.maxHp)}`);
+      setCardText('[data-hero-xp]', maxLevel ? `${hero.xp} / ${hero.xp} MASTERED` : `${xp.current} / ${xp.required} XP`);
+      const xpTrack = card.querySelector<HTMLElement>('.hero-xp-track');
+      xpTrack?.setAttribute('aria-valuemax', String(xp.required));
+      xpTrack?.setAttribute('aria-valuenow', String(xp.current));
+      card.querySelector<HTMLElement>('[data-hero-xp-fill]')?.style.setProperty('--xp', String(xp.ratio));
+      [2, 4, 6].forEach((level, milestoneIndex) => {
+        const pip = card.querySelector<HTMLElement>(`[data-milestone="${milestoneIndex}"]`);
         const milestone = hero.milestones[milestoneIndex];
         const label = milestone ? HERO_MILESTONE_NAMES[milestone] : `Unlocks at level ${level}`;
-        return `<i class="hero-milestone ${hero.level >= level ? 'is-earned' : ''}" title="${label}" aria-label="${label}"></i>`;
-      }).join('');
-      const spellButtons = activeSpells.map((spell) => {
+        pip?.classList.toggle('is-earned', hero.level >= level);
+        pip?.setAttribute('title', label);
+        pip?.setAttribute('aria-label', label);
+      });
+
+      for (const spell of activeSpellsFor(hero)) {
+        const button = commandBar.querySelector<HTMLButtonElement>(`[data-hero="${hero.id}"][data-spell="${spell.id}"]`);
+        if (!button) continue;
         const cooldown = Math.ceil(hero.spellCooldowns[spell.id]);
         const armed = this.controller.armedSpell?.heroId === hero.id && this.controller.armedSpell.spellId === spell.id;
         const verb = spell.targeting === 'self' ? 'Invoke' : 'Cast';
-        return `<button class="ability-button ${armed ? 'is-armed' : ''}" data-action="spell" data-hero="${hero.id}" data-spell="${spell.id}" ${cooldown > 0 || !hero.alive ? 'disabled' : ''} aria-label="${hero.alive ? `${verb} ${spell.name} — ${hero.name.split(' • ')[0]}` : `${hero.name} respawns in ${respawn}`}" aria-pressed="${armed}" title="${spell.description}">
-          <span class="ability-glyph">${spellGlyph[spell.id]}</span><strong>${cooldown > 0 ? cooldown : spell.targeting === 'self' ? 'USE' : 'CAST'}</strong><b>${spellShortcut[spell.id]}</b>
-        </button>`;
-      }).join('');
-      return `<article class="hero-card panel ${selected ? 'is-selected' : ''} ${casting ? 'is-casting' : ''} ${activeSpells.length > 1 ? 'has-multiple-spells' : ''} ${hero.alive ? '' : 'is-down'}" data-hero-card="${hero.id}" style="--hero:#${hero.accent.toString(16).padStart(6, '0')}">
-        <button class="hero-portrait" data-action="hero" data-hero="${hero.id}" aria-label="Select ${hero.name} • ${hero.alive ? `${Math.ceil(hero.hp)} health` : `respawns in ${respawn}` }" title="${hero.name}"><img src="${assetUrl(`assets/heroes/${hero.id}.png`)}" alt="" draggable="false"><i class="hero-charge" style="--charge:${charge}"></i><span class="hero-health" style="--health:${health}"></span>${hero.alive ? '' : `<strong class="hero-respawn">${respawn}</strong>`}</button>
-        <div class="hero-copy"><small><span class="hero-rank-label">CHAMPION ${index + 1} • </span><strong data-hero-level>LV ${hero.level}</strong></small><b>${hero.name.split(' • ')[0]}</b><span data-hero-hp>HP ${Math.ceil(hero.hp)} / ${Math.ceil(hero.maxHp)}</span><div class="hero-xp-row"><span data-hero-xp>${maxLevel ? `${hero.xp} / ${hero.xp} MASTERED` : `${xp.current} / ${xp.required} XP`}</span><em>${milestonePips}</em></div><div class="hero-xp-track" role="progressbar" aria-label="${hero.name} experience" aria-valuemin="0" aria-valuemax="${xp.required}" aria-valuenow="${xp.current}"><i style="--xp:${xp.ratio}"></i></div></div>
-        <div class="hero-spell-stack">${spellButtons}</div>
-      </article>`;
-    }).join('');
+        button.dataset.action = armed ? 'cancel-cast' : 'spell';
+        button.disabled = !armed && (cooldown > 0 || !hero.alive);
+        button.classList.toggle('is-armed', armed);
+        button.classList.toggle('is-cancel', armed);
+        button.setAttribute('aria-pressed', String(armed));
+        button.setAttribute('aria-label', armed ? `Cancel ${spell.name} targeting` : hero.alive ? `${verb} ${spell.name} — ${hero.name.split(' • ')[0]}` : `${hero.name} respawns in ${respawn}`);
+        const glyph = button.querySelector<HTMLElement>('[data-spell-glyph]');
+        if (glyph) glyph.textContent = armed ? '×' : spellGlyph[spell.id];
+        const state = button.querySelector<HTMLElement>('[data-spell-state]');
+        if (state) state.textContent = armed ? 'CANCEL' : cooldown > 0 ? String(cooldown) : spell.targeting === 'self' ? 'USE' : 'CAST';
+        const key = button.querySelector<HTMLElement>('[data-spell-key]');
+        if (key) key.textContent = armed ? 'ESC' : String(spellShortcut[spell.id]);
+      }
+    }
+    commandBar.classList.toggle('is-targeting', Boolean(this.controller.armedSpell));
   }
 
   private renderSelection(): void {
