@@ -3,8 +3,11 @@ import { expect, test } from '@playwright/test';
 declare const process: { env: Readonly<Record<string, string | undefined>> };
 const isHostedRunner = Boolean(process.env.CI);
 const hostedCleanupTimeout = isHostedRunner ? 5_000 : 2_500;
-const hostedAcceleratedTimeout = isHostedRunner ? 2_500 : 1_500;
-const hostedReducedTimeout = isHostedRunner ? 1_800 : 1_000;
+// GitHub's software-rendered Chromium can starve requestAnimationFrame while
+// rasterizing these layered rigs. Hosted deadlines permit scheduler slack;
+// local wall-clock assertions below still enforce the real 2x/reduced bounds.
+const hostedAcceleratedTimeout = isHostedRunner ? 5_000 : 1_500;
+const hostedReducedTimeout = isHostedRunner ? 3_500 : 1_000;
 
 async function enterBattle(page: import('@playwright/test').Page): Promise<void> {
   await page.goto('/');

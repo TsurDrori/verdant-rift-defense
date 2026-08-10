@@ -47,6 +47,9 @@ test('collapsed HP remains colored and tracks injury without duplicate meters', 
   await enterBattle(page);
   await page.evaluate(() => {
     const controller = window.__VERDANT_RIFT__!;
+    // Freeze passive regeneration so this assertion compares one authoritative
+    // snapshot with its rendered health bar instead of measuring runner speed.
+    controller.togglePause();
     const hero = (controller.simulation as unknown as { heroes: Array<{ id: string; hp: number; maxHp: number }> }).heroes.find((candidate) => candidate.id === 'kael')!;
     hero.hp = hero.maxHp * 0.42;
     controller.update(0);
