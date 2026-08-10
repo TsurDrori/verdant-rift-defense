@@ -151,10 +151,13 @@ test('keeps battle music alive while a cold boss stream buffers', async ({ page 
     const nativePlay = HTMLMediaElement.prototype.play;
     HTMLMediaElement.prototype.play = function playWithColdBossBuffer(): Promise<void> {
       if (this.src.includes('boss-theme.ogg')) {
-        return new Promise((resolve) => window.setTimeout(() => {
-          this.dispatchEvent(new Event('playing'));
-          resolve();
-        }, 450));
+        const bossElement = this;
+        return new Promise((resolve) => {
+          (window as typeof window & { __RELEASE_BOSS_STREAM__?: () => void }).__RELEASE_BOSS_STREAM__ = () => {
+            bossElement.dispatchEvent(new Event('playing'));
+            resolve();
+          };
+        });
       }
       return nativePlay.call(this);
     };
@@ -169,8 +172,12 @@ test('keeps battle music alive while a cold boss stream buffers', async ({ page 
   });
 
   await expect.poll(() => page.evaluate(() => window.__VERDANT_RIFT_AUDIO__!.diagnostics().currentCue)).toBe('boss-theme');
-  await page.waitForTimeout(180);
   expect(await page.evaluate(() => window.__VERDANT_RIFT_AUDIO__!.diagnostics().transport.sourceStops)).toBe(beforeStops);
+  await page.evaluate(() => {
+    const release = (window as typeof window & { __RELEASE_BOSS_STREAM__?: () => void }).__RELEASE_BOSS_STREAM__;
+    if (!release) throw new Error('Boss stream release hook was not installed.');
+    release();
+  });
   await expect.poll(
     () => page.evaluate(() => window.__VERDANT_RIFT_AUDIO__!.diagnostics().transport.sourceStops),
     { timeout: 2_000 },
