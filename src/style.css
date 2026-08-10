@@ -165,24 +165,30 @@ html.spell-cast-mode #game-root canvas { cursor:crosshair !important; touch-acti
 .priority-button { width:calc(100% - 26px); min-height:48px; margin:0 13px 10px; display:flex; justify-content:space-between; align-items:center; padding:9px 11px; border:1px solid rgba(126,228,187,.34); border-radius:6px; color:#c4d6cc; background:rgba(5,20,18,.62); cursor:pointer; font-size:var(--type-small); }
 .priority-button b { color:#9beaca; font-size:var(--type-small); letter-spacing:.7px; }
 
-.hero-dock { pointer-events: auto; position: absolute; left: max(18px, env(safe-area-inset-left)); bottom: max(18px, env(safe-area-inset-bottom)); display:flex; flex-direction:column; gap:7px; }
-.hero-card { --hero: #7ee4cf; position:relative; width:270px; height:96px; display:grid; grid-template-columns:54px minmax(0,1fr); align-items:center; gap:9px; padding:8px; border-radius:8px 22px 8px 8px; transition:.18s ease; }
+.hero-dock { pointer-events:auto; position:absolute; z-index:7; left:50%; bottom:max(12px,env(safe-area-inset-bottom)); display:flex; align-items:flex-end; gap:6px; transform:translateX(-50%); }
+.hero-card { --hero:#7ee4cf; --hp-color:#50d277; position:relative; width:62px; height:64px; padding:4px; overflow:visible; border-radius:9px 17px 9px 9px; transition:border-color .18s,box-shadow .18s; }
+.hero-card.is-expanded { width:312px; height:112px; padding:6px; }
 .hero-card.is-selected { border-color:var(--hero); box-shadow:0 0 0 1px color-mix(in srgb, var(--hero), transparent 65%), 0 12px 32px rgba(0,0,0,.48), inset 0 0 24px color-mix(in srgb, var(--hero), transparent 88%); }
 .hero-card.is-casting { border-color:#fff0a8; box-shadow:0 0 0 2px color-mix(in srgb,var(--hero),transparent 52%),0 0 30px color-mix(in srgb,var(--hero),transparent 48%),var(--shadow); }
 .hero-card.is-casting .hero-portrait { box-shadow:inset 0 0 16px rgba(255,255,255,.28),0 0 18px var(--hero); }
-.hero-card-hit { position:absolute; z-index:1; inset:0; width:100%; height:100%; border:0; border-radius:inherit; background:transparent; cursor:pointer; }
-.hero-card-hit:focus-visible { outline:3px solid #fff0a8; outline-offset:3px; }
-.hero-card > :not(.hero-card-hit) { position:relative; z-index:2; pointer-events:none; }
-.hero-portrait { position:relative; width:51px; height:53px; display:grid; place-items:center; border:1px solid color-mix(in srgb, var(--hero), #e8d49c 35%); border-radius:50% 50% 43% 43%; background:radial-gradient(circle at 50% 35%, color-mix(in srgb, var(--hero), white 28%), color-mix(in srgb, var(--hero), #0a1715 45%) 60%, #091816); color:#0b201b; overflow:hidden; box-shadow:inset 0 0 13px rgba(255,255,255,.18), 0 4px 10px rgba(0,0,0,.4); }
-.hero-portrait > span { font-family:Georgia,serif; font-size:23px; font-weight:900; text-shadow:0 1px rgba(255,255,255,.35); }
-.hero-charge { --charge:0; position:absolute; inset:0; background:conic-gradient(transparent calc(var(--charge) * 360deg), rgba(2,10,9,.82) 0); opacity:.65; }
-.hero-health { --health:1; position:absolute; left:5px; right:5px; bottom:3px; height:8px; border:1px solid #fff1c1; border-radius:5px; background:#180d11; overflow:hidden; z-index:3; box-shadow:0 1px 4px rgba(0,0,0,.7),0 0 0 1px rgba(0,0,0,.45); }
-.hero-health::after { content:""; display:block; width:100%; height:100%; background:linear-gradient(90deg,#35d474,#b6f18b); transform:scaleX(var(--health)); transform-origin:left; transition:transform .16s linear; }
+.hero-card[data-health-band="wounded"] { --hp-color:#df5146; }
+.hero-card[data-health-band="critical"] { --hp-color:#ff3f45; }
+.hero-card-toggle { position:relative; width:100%; height:100%; display:grid; place-items:center; padding:2px; border:0; border-radius:7px 13px 7px 7px; color:#f8edc4; background:linear-gradient(150deg,rgba(32,78,64,.72),rgba(5,22,19,.9)); cursor:pointer; }
+.hero-card-toggle:focus-visible { outline:3px solid #fff0a8; outline-offset:3px; }
+.hero-card.is-expanded .hero-card-toggle { position:absolute; left:6px; top:6px; width:54px; height:100px; }
+.hero-portrait { --health:1; position:relative; width:48px; height:50px; display:grid; place-items:center; border:1px solid color-mix(in srgb,var(--hero),#e8d49c 35%); border-radius:50% 50% 43% 43%; background:radial-gradient(circle at 50% 35%,color-mix(in srgb,var(--hero),white 28%),color-mix(in srgb,var(--hero),#0a1715 45%) 60%,#091816); overflow:hidden; box-shadow:inset 0 0 13px rgba(255,255,255,.18),0 4px 10px rgba(0,0,0,.4); }
+.hero-portrait img { width:100%; height:100%; object-fit:cover; object-position:50% 8%; transform:scale(1.52) translateY(13%); }
+.hero-wound-wash { position:absolute; z-index:2; left:0; right:0; bottom:0; height:calc((1 - var(--health)) * 100%); background:linear-gradient(0deg,rgba(84,0,13,.86),rgba(152,22,24,.62)); mix-blend-mode:multiply; transition:height .22s ease-out; }
+.hero-health { --health:1; position:absolute; z-index:4; left:4px; right:4px; bottom:3px; height:8px; overflow:hidden; border:1px solid rgba(255,241,193,.72); border-radius:4px; background:#21090e; box-shadow:0 1px 4px rgba(0,0,0,.8); }
+.hero-health::after { content:""; display:block; width:100%; height:100%; background:linear-gradient(90deg,color-mix(in srgb,var(--hp-color),#7b170f 20%),var(--hp-color)); transform:scaleX(var(--health)); transform-origin:left; transition:transform .18s linear,background .18s; }
+.hero-details[hidden] { display:none; }
+.hero-expand-glyph { position:absolute; z-index:5; right:3px; top:1px; color:#ffe7a0; font:10px Georgia,serif; filter:drop-shadow(0 1px #07120f); }
+.hero-card.is-expanded .hero-expand-glyph { transform:rotate(180deg); }
 .hero-respawn { position:absolute; inset:0; display:none; place-items:center; z-index:4; color:#fff0c4; font-family:Georgia,serif; font-size:18px; text-shadow:0 2px 5px #150a0d; }
 .hero-respawn.is-visible { display:grid; }
 .hero-card.is-down { border-color:rgba(197,83,95,.58); }
 .hero-card.is-down .hero-portrait img { filter:grayscale(1) brightness(.42); }
-.hero-card.is-down .hero-charge { background:rgba(16,7,10,.58); opacity:1; }
+.hero-details { height:100%; margin-left:62px; display:grid; grid-template-columns:minmax(112px,1fr) auto; align-items:center; gap:7px; }
 .hero-copy { display:grid; align-content:center; min-width:0; }
 .hero-copy small { color:var(--hero); font-size:max(12px,var(--type-hint)); letter-spacing:.65px; font-weight:900; }
 .hero-copy small strong { color:#fff1b5; }
@@ -203,15 +209,12 @@ html.spell-cast-mode #game-root canvas { cursor:crosshair !important; touch-acti
 .ability-button.is-armed { color:#10251f; background:radial-gradient(circle at 50% 35%,#fff3b1,var(--hero) 48%,#246b5a); animation:armed .65s infinite alternate; }
 .ability-button.is-armed .ability-glyph { color:#173d32; filter:drop-shadow(0 1px rgba(255,255,255,.6)); }
 .ability-button.is-armed strong,.ability-button.is-armed b { color:#12382f; }
-.hero-command-bar { pointer-events:auto; position:absolute; z-index:7; left:50%; bottom:max(18px,env(safe-area-inset-bottom)); min-height:70px; display:flex; align-items:center; justify-content:center; gap:7px; padding:6px 10px; border-radius:22px 8px 22px 8px; transform:translateX(-50%); }
-.hero-command-bar::before { content:"CHAMPION ARTS"; position:absolute; left:50%; top:-18px; color:#d9c883; font-size:9px; font-weight:900; letter-spacing:1.2px; white-space:nowrap; transform:translateX(-50%); text-shadow:0 2px 4px #06110f; }
-.hero-command-spell { width:62px; height:60px; }
-.hero-command-spell .spell-owner { position:absolute; left:50%; bottom:-14px; max-width:68px; overflow:hidden; color:#c8dbd1; font-size:8px; font-style:normal; font-weight:900; letter-spacing:.5px; text-overflow:ellipsis; text-transform:uppercase; white-space:nowrap; transform:translateX(-50%); }
+.hero-spell-stack { display:flex; align-items:center; justify-content:flex-end; gap:4px; }
+.hero-command-spell { width:52px; height:54px; }
 .hero-command-spell.is-cancel { width:82px; border-color:#ffb08d; clip-path:polygon(9% 0,91% 0,100% 18%,94% 82%,86% 100%,14% 100%,6% 82%,0 18%); background:linear-gradient(160deg,#b64d3d,#4b1819 74%); color:#fff1cf; animation:cancel-pulse .65s infinite alternate; }
 .hero-command-spell.is-cancel .ability-glyph { color:#fff0c6; filter:drop-shadow(0 0 6px #ff8a6b); }
 .hero-command-spell.is-cancel strong,.hero-command-spell.is-cancel b { color:#fff0c6; }
-.hero-command-spell.is-cancel .spell-owner { color:#ffc2a5; }
-.hud:has(.selection-panel.is-visible) .hero-command-bar { opacity:0; visibility:hidden; pointer-events:none; }
+.hud:has(.selection-panel.is-visible) .hero-dock { opacity:0; visibility:hidden; pointer-events:none; }
 @keyframes armed { to { filter:drop-shadow(0 0 11px var(--hero)) brightness(1.12); } }
 @keyframes cancel-pulse { to { filter:drop-shadow(0 0 12px rgba(255,112,83,.9)) brightness(1.14); } }
 
@@ -365,13 +368,13 @@ html.tactical-context-pause .view-controls {
   .tower-description { font-size:var(--type-body); }
   .tower-option b { font-size:var(--type-action); }
   .tower-option small,.wide-upgrade small,.branch-option small { font-size:var(--type-caption); }
-  .hero-dock { left:max(14px,env(safe-area-inset-left)); top:50%; bottom:auto; transform:translateY(-50%); flex-direction:column; gap:7px; }
-  .hero-card { width:250px; height:88px; grid-template-columns:48px minmax(0,1fr); gap:7px; padding:6px; border-radius:8px 18px 8px 8px; }
+  .hero-dock { left:50%; top:auto; bottom:max(12px,env(safe-area-inset-bottom)); transform:translateX(-50%); flex-direction:row; gap:6px; }
+  .hero-card { width:62px; height:64px; padding:4px; border-radius:9px 17px 9px 9px; }
+  .hero-card.is-expanded { width:312px; height:112px; padding:6px; }
   .hero-copy { display:grid; }
   .hero-rank-label { display:none; }
   .hero-copy b { font-size:14px; }
-  .hero-portrait { width:47px; height:50px; }
-  .hero-portrait img { width:100%; height:100%; object-fit:cover; object-position:50% 8%; transform:scale(1.55) translateY(13%); }
+  .hero-portrait { width:48px; height:50px; }
   .ability-button { width:52px; height:52px; }
   .ability-button > span { font-size:15px; }
   .wave-card { width:248px; min-height:66px; }
@@ -385,19 +388,7 @@ html.tactical-context-pause .view-controls {
   .toast p { font-size:var(--type-body); }
 }
 
-@media (min-width:621px) and (max-width:1100px) {
-  .close-button { width:44px; height:44px; }
-  .hud:has(.selection-panel[data-side="left"].is-visible) .hero-dock { opacity:0; visibility:hidden; pointer-events:none; }
-}
-
-/* On wider desktop layouts the hero dock stays actionable, but follows the
-   free edge whenever a contextual tower panel occupies its normal left rail. */
-@media (min-width:1101px) {
-  .hud:has(.selection-panel[data-side="left"].is-visible) .hero-dock {
-    left:auto;
-    right:max(14px,env(safe-area-inset-right));
-  }
-}
+@media (min-width:621px) and (max-width:1100px) { .close-button { width:44px; height:44px; } }
 
 /* At common laptop sizes, keep the status ribbon clear of the first tower. */
 @media (min-width: 621px) and (max-width: 1400px) {
@@ -423,19 +414,22 @@ html.tactical-context-pause .view-controls {
   .boss-strip { top:max(8px,env(safe-area-inset-top)); left:50%; width:min(330px,calc(100vw - 320px)); min-width:280px; height:42px; grid-template-columns:94px 1fr 35px; gap:7px; padding:5px 8px; }
   .boss-copy small { font-size:var(--type-hint); }
   .boss-copy strong { font-size:11px; }
-  .hero-dock { top:50%; left:max(10px,env(safe-area-inset-left)); bottom:auto; transform:translateY(-50%); flex-direction:column; gap:5px; }
-  .hero-card { width:228px; height:74px; grid-template-columns:44px minmax(0,1fr); gap:5px; padding:4px; }
+  .hero-dock { top:auto; left:50%; bottom:max(8px,env(safe-area-inset-bottom)); transform:translateX(-50%); flex-direction:row; gap:5px; }
+  .hero-card { width:58px; height:60px; padding:3px; }
+  .hero-card.is-expanded { width:286px; height:104px; padding:5px; }
+  .hero-card.is-expanded .hero-card-toggle { left:5px; top:5px; width:50px; height:94px; }
+  .hero-card.is-expanded .hero-details { margin-left:56px; gap:5px; }
   .hero-copy { display:grid; }
   .hero-copy b,.hero-rank-label { display:none; }
   .hero-copy small,.hero-copy > span,.hero-xp-row > span { font-size:11px; }
   .hero-copy > span { margin-top:1px; }
   .hero-xp-row { margin-top:2px; }
   .hero-xp-track { margin-top:2px; }
-  .hero-portrait { width:44px; height:45px; }
-  .hero-portrait img { width:100%; height:100%; object-fit:cover; object-position:50% 8%; transform:scale(1.55) translateY(13%); }
+  .hero-portrait { width:44px; height:46px; }
   .ability-button { width:48px; height:48px; }
   .ability-button > span { font-size:15px; }
   .wave-card { right:max(10px,env(safe-area-inset-right)); bottom:max(8px,env(safe-area-inset-bottom)); width:242px; min-height:64px; }
+  .hud:has(.hero-card.is-expanded) .wave-card { bottom:max(120px,calc(env(safe-area-inset-bottom) + 120px)); }
   .wave-intel { min-height:64px; grid-template-columns:1fr 96px; }
   .wave-intel > div { padding:9px 10px; }
   .wave-intel p { display:none; }
@@ -445,7 +439,6 @@ html.tactical-context-pause .view-controls {
   .close-button { width:44px; height:44px; }
   .hud:has(.selection-panel.is-visible) .wave-card,
   .hud:has(.selection-panel.is-visible) .toast-stack { opacity:0; visibility:hidden; pointer-events:none; }
-  .hud:has(.selection-panel[data-side="left"].is-visible) .hero-dock { opacity:0; visibility:hidden; pointer-events:none; }
   .context-pause-banner { display:flex; }
   /* The scroll affordance is actionable UI, so reserve a real footer for it.
      Floating it over the scrollport obscured priority/upgrade controls at
@@ -524,8 +517,11 @@ html.tactical-context-pause .view-controls {
   .hud:has(.boss-strip.is-visible) .view-controls { top:max(118px,calc(env(safe-area-inset-top) + 118px)); }
   .boss-copy small { font-size:var(--type-hint); }
   .boss-copy strong { font-size:11px; }
-  .hero-dock { top:auto; left:max(8px,env(safe-area-inset-left)); bottom:max(72px,calc(env(safe-area-inset-bottom) + 72px)); transform:none; flex-direction:column; gap:4px; }
-  .hero-card { width:184px; height:72px; grid-template-columns:44px minmax(0,1fr); gap:3px; padding:4px; }
+  .hero-dock { top:auto; left:50%; bottom:max(8px,env(safe-area-inset-bottom)); transform:translateX(-50%); flex-direction:row; gap:5px; }
+  .hero-card { width:56px; height:60px; padding:3px; }
+  .hero-card.is-expanded { width:min(298px,calc(100vw - 82px)); height:108px; padding:5px; }
+  .hero-card.is-expanded .hero-card-toggle { left:5px; top:5px; width:50px; height:98px; }
+  .hero-card.is-expanded .hero-details { margin-left:56px; grid-template-columns:minmax(104px,1fr) auto; gap:5px; }
   .hero-copy { display:grid; }
   .hero-copy b,.hero-rank-label { display:none; }
   .hero-copy small,.hero-copy > span,.hero-xp-row > span { font-size:11px; }
@@ -534,7 +530,6 @@ html.tactical-context-pause .view-controls {
   .hero-xp-row em { gap:2px; }
   .hero-xp-track { margin-top:2px; }
   .hero-portrait { width:44px; height:47px; }
-  .hero-portrait img { width:100%; height:100%; object-fit:cover; object-position:50% 8%; transform:scale(1.5) translateY(13%); }
   .ability-button { width:44px; height:44px; }
   .ability-button > span { font-size:15px; }
   .ability-button strong { font-size:8px; letter-spacing:.35px; }
@@ -542,12 +537,10 @@ html.tactical-context-pause .view-controls {
   .cast-command-sigil { width:35px; height:40px; font-size:18px; }
   .cast-command b { font-size:14px; }
   .cast-command em { overflow:hidden; font-size:9px; white-space:nowrap; text-overflow:ellipsis; }
-  .hero-command-bar { bottom:max(8px,env(safe-area-inset-bottom)); min-height:54px; gap:4px; padding:4px 8px; }
-  .hero-command-bar::before { display:none; }
   .hero-command-spell { width:46px; height:46px; }
   .hero-command-spell.is-cancel { width:70px; }
-  .hero-command-spell .spell-owner { bottom:-10px; font-size:7px; }
   .wave-card { right:max(8px,env(safe-area-inset-right)); bottom:max(72px,calc(env(safe-area-inset-bottom) + 72px)); width:170px; min-height:58px; }
+  .hud:has(.hero-card.is-expanded) .wave-card { bottom:max(126px,calc(env(safe-area-inset-bottom) + 126px)); }
   .wave-intel { min-height:58px; grid-template-columns:1fr 72px; }
   .wave-intel > div { padding:8px; }
   .wave-intel p { display:none; }
@@ -568,7 +561,6 @@ html.tactical-context-pause .view-controls {
   .branch-option { min-height:132px; }
   .hud:has(.selection-panel.is-visible) .wave-card,
   .hud:has(.selection-panel.is-visible) .hero-dock,
-  .hud:has(.selection-panel.is-visible) .hero-command-bar,
   .hud:has(.selection-panel.is-visible) .toast-stack { opacity:0; visibility:hidden; pointer-events:none; }
   .toast-stack { top:126px; width:calc(100vw - 16px); }
   .hud:has(.boss-strip.is-visible) .toast-stack { top:184px; }

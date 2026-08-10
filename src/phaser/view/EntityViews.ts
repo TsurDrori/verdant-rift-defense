@@ -769,7 +769,10 @@ export function createHeroView(scene: Phaser.Scene, hero: HeroState): Phaser.Gam
   const hpWidth = hero.id === 'kael' ? 47 : 42;
   const hpY = characterTop;
   const hpBack = scene.add.rectangle(0, hpY, hpWidth + 4, 7, 0x0a1614, 0).setStrokeStyle(1, 0xe9dba8, 0);
-  const hp = scene.add.rectangle(-hpWidth / 2, hpY, hpWidth, 4, hero.accent, 0).setOrigin(0, 0.5);
+  // Keep the fill intrinsically opaque and hide the object itself until the
+  // hero is injured. Creating this with fillAlpha=0 left only the black backing
+  // visible even after setAlpha(1), because object alpha and fill alpha differ.
+  const hp = scene.add.rectangle(-hpWidth / 2, hpY, hpWidth, 5, 0x52dc78, 1).setOrigin(0, 0.5).setAlpha(0);
   container.add([contact, leftBracket, rightBracket, actionRig, hpBack, hp]);
   container.setData({ leftBracket, rightBracket, sprite, actionRig, idleRig, motionAccent, motionAccentColor: hero.accent, hp, hpBack, hpWidth, lastCooldown: hero.attackCooldown, lastWorldX: hero.x, lastWorldY: hero.y, lastAlive: hero.alive, poseLockUntil: 0, isHeroView: true, heroId: hero.id, presentationSeed: presentationSeed(`hero:${hero.id}`), motionBaseY: 0, gaitPhase: presentationSeed(`stride:hero:${hero.id}`) * Math.PI * 2, animationActionToken: 0, actionSerial: 0 });
   scene.tweens.add({ targets: [leftBracket, rightBracket], alpha: { from: 0.38, to: 0.88 }, duration: 900, yoyo: true, repeat: -1 });
@@ -803,7 +806,9 @@ export function refreshHeroView(container: Phaser.GameObjects.Container, hero: H
   // or defeat. The DOM card and canvas bar must never contradict each other.
   hp.displayWidth = hpWidth * healthRatio;
   const healthAlpha = hero.alive && healthRatio < 0.999 ? 1 : 0;
-  hp.setAlpha(healthAlpha); hpBack.setFillStyle(0x0a1614, healthAlpha ? 0.94 : 0).setStrokeStyle(1, 0xe9dba8, healthAlpha ? 0.45 : 0);
+  const healthColor = healthRatio <= 0.25 ? 0xff3f45 : healthRatio <= 0.6 ? 0xdf5146 : 0x52dc78;
+  hp.setFillStyle(healthColor, 1).setAlpha(healthAlpha);
+  hpBack.setFillStyle(0x16080b, healthAlpha ? 0.94 : 0).setStrokeStyle(1, 0xffe5bb, healthAlpha ? 0.62 : 0);
   const actionRig = container.getData('actionRig') as Phaser.GameObjects.Container;
   actionRig.setAlpha(hero.alive ? 1 : 0.23);
   (container.getData('leftBracket') as Phaser.GameObjects.Polygon).setVisible(hero.alive);

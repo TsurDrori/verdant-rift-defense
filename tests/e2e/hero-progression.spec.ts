@@ -6,6 +6,7 @@ test('shows exact LV, HP and XP and announces an earned magic milestone', async 
 
   const card = page.locator('[data-hero-card="kael"]');
   await expect(card).toBeVisible();
+  await card.getByRole('button', { name: /Select and expand Kael/ }).click();
   await expect(card.locator('[data-hero-level]')).toHaveText('LV 1');
   await expect(card.locator('[data-hero-hp]')).toHaveText('HP 420 / 420');
   await expect(card.locator('[data-hero-xp]')).toHaveText('0 / 40 XP');

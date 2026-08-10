@@ -98,6 +98,7 @@ export class GameUI {
   private contextPaused = false;
   private activeModal: HTMLElement | null = null;
   private focusBeforeModal: HTMLElement | null = null;
+  private expandedHero: HeroId | null = null;
 
   constructor(root: HTMLElement, controller: GameController) {
     this.root = root;
@@ -155,7 +156,6 @@ export class GameUI {
         <section class="selection-panel panel" data-selection-panel aria-label="Tower controls"></section>
         <button class="panel-scroll-affordance panel" data-panel-scroll-cue data-action="panel-scroll" aria-label="Show more tower controls"><span>MORE CONTROLS</span><b>↓</b></button>
         <section class="hero-dock" data-hero-dock></section>
-        <nav class="hero-command-bar panel" data-hero-command-bar aria-label="Hero spell controls"></nav>
         <section class="cast-command panel" data-cast-command role="status" aria-live="assertive" aria-hidden="true">
           <span class="cast-command-sigil" data-cast-glyph>✦</span>
           <span><small data-cast-hero>HERO SPELL</small><b data-cast-name>Choose a target</b><em>Tap the battlefield • Esc or right-click cancels</em></span>
@@ -232,7 +232,14 @@ export class GameUI {
       else if (action === 'close') this.closeContextPanel();
       else if (action === 'build') this.controller.build(button.dataset.tower as TowerId, this.contextPaused);
       else if (action === 'branch') this.controller.branch(button.dataset.branch as TowerBranch, towerUid, this.contextPaused);
-      else if (action === 'hero') { this.controller.selectHero(button.dataset.hero as HeroId); this.resumeContextPause(); }
+      else if (action === 'hero-toggle') {
+        const heroId = button.dataset.hero as HeroId;
+        if (this.controller.armedSpell) this.controller.cancelSpellCast();
+        if (this.expandedHero === heroId) this.expandedHero = null;
+        else { this.expandedHero = heroId; this.controller.selectHero(heroId); }
+        this.resumeContextPause();
+      }
+      else if (action === 'hero') { this.expandedHero = button.dataset.hero as HeroId; this.controller.selectHero(button.dataset.hero as HeroId); this.resumeContextPause(); }
       else if (action === 'ability') this.controller.armAbility(button.dataset.hero as HeroId);
       else if (action === 'spell') this.controller.armSpell(button.dataset.hero as HeroId, button.dataset.spell as HeroActiveSpellId);
       else if (action === 'cancel-cast') this.controller.cancelSpellCast();
@@ -299,8 +306,8 @@ export class GameUI {
       if (event.code === 'KeyF') this.controller.toggleSpeed();
       if (event.code === 'KeyQ') this.controller.selectAdjacentPad(-1);
       if (event.code === 'KeyE') this.controller.selectAdjacentPad(1);
-      if (event.code === 'KeyZ') { this.controller.selectHero('kael'); this.resumeContextPause(); }
-      if (event.code === 'KeyX') { this.controller.selectHero('lyra'); this.resumeContextPause(); }
+      if (event.code === 'KeyZ') { this.expandedHero = 'kael'; this.controller.selectHero('kael'); this.resumeContextPause(); }
+      if (event.code === 'KeyX') { this.expandedHero = 'lyra'; this.controller.selectHero('lyra'); this.resumeContextPause(); }
       if (event.code === 'KeyW') this.controller.nudgeSelectedHero(0, -55);
       if (event.code === 'KeyS') this.controller.nudgeSelectedHero(0, 55);
       if (event.code === 'KeyA') this.controller.nudgeSelectedHero(-55, 0);
@@ -768,8 +775,7 @@ export class GameUI {
 
   private renderHeroes(heroes: readonly HeroState[]): void {
     const dock = this.root.querySelector<HTMLElement>('[data-hero-dock]');
-    const commandBar = this.root.querySelector<HTMLElement>('[data-hero-command-bar]');
-    if (!dock || !commandBar) return;
+    if (!dock) return;
     const activeSpellsFor = (hero: HeroState) => heroSpellsForHero(hero.id).filter((spell): spell is ReturnType<typeof heroSpellSpec> & { id: HeroActiveSpellId; kind: 'active' } => spell.kind === 'active' && hero.unlockedSpells.includes(spell.id));
     // Only unlocks alter structure. Combat values are synchronized into stable
     // nodes below, so a cooldown tick can never detach a button mid-press.
@@ -777,13 +783,17 @@ export class GameUI {
     if (structureKey !== this.lastHeroDock) {
       this.lastHeroDock = structureKey;
       dock.innerHTML = heroes.map((hero, index) => `<article class="hero-card panel" data-hero-card="${hero.id}" style="--hero:#${hero.accent.toString(16).padStart(6, '0')}">
-        <button type="button" class="hero-card-hit" data-action="hero" data-hero="${hero.id}"></button>
-        <div class="hero-portrait" aria-hidden="true"><img src="${assetUrl(`assets/heroes/${hero.id}.png`)}" alt="" draggable="false"><i class="hero-charge" data-hero-charge></i><span class="hero-health" data-hero-health></span><strong class="hero-respawn" data-hero-respawn></strong></div>
-        <div class="hero-copy"><small><span class="hero-rank-label">CHAMPION ${index + 1} • </span><strong data-hero-level></strong></small><b>${hero.name.split(' • ')[0]}</b><span data-hero-hp></span><div class="hero-xp-row"><span data-hero-xp></span><em>${[2, 4, 6].map((level, milestoneIndex) => `<i class="hero-milestone" data-milestone="${milestoneIndex}" title="Unlocks at level ${level}" aria-label="Unlocks at level ${level}"></i>`).join('')}</em></div><div class="hero-xp-track" role="progressbar" aria-label="${hero.name} experience" aria-valuemin="0"><i data-hero-xp-fill></i></div></div>
+        <button type="button" class="hero-card-toggle" data-action="hero-toggle" data-hero="${hero.id}">
+          <span class="hero-portrait" aria-hidden="true"><img src="${assetUrl(`assets/heroes/${hero.id}.png`)}" alt="" draggable="false"><i class="hero-wound-wash"></i><strong class="hero-respawn" data-hero-respawn></strong></span>
+          <span class="hero-health" data-hero-health aria-hidden="true"></span><span class="hero-expand-glyph" aria-hidden="true">⌃</span>
+        </button>
+        <div class="hero-details" data-hero-details hidden>
+          <div class="hero-copy"><small><span class="hero-rank-label">CHAMPION ${index + 1} • </span><strong data-hero-level></strong></small><b>${hero.name.split(' • ')[0]}</b><span data-hero-hp></span><div class="hero-xp-row"><span data-hero-xp></span><em>${[2, 4, 6].map((level, milestoneIndex) => `<i class="hero-milestone" data-milestone="${milestoneIndex}" title="Unlocks at level ${level}" aria-label="Unlocks at level ${level}"></i>`).join('')}</em></div><div class="hero-xp-track" role="progressbar" aria-label="${hero.name} experience" aria-valuemin="0"><i data-hero-xp-fill></i></div></div>
+          <div class="hero-spell-stack">${activeSpellsFor(hero).map((spell) => `<button type="button" class="ability-button hero-command-spell" data-action="spell" data-hero="${hero.id}" data-spell="${spell.id}" style="--hero:#${hero.accent.toString(16).padStart(6, '0')}" title="${spell.description}">
+            <span class="ability-glyph" data-spell-glyph>${spellGlyph[spell.id]}</span><strong data-spell-state></strong><b data-spell-key>${spellShortcut[spell.id]}</b>
+          </button>`).join('')}</div>
+        </div>
       </article>`).join('');
-      commandBar.innerHTML = heroes.flatMap((hero) => activeSpellsFor(hero).map((spell) => `<button type="button" class="ability-button hero-command-spell" data-action="spell" data-hero="${hero.id}" data-spell="${spell.id}" style="--hero:#${hero.accent.toString(16).padStart(6, '0')}" title="${spell.description}">
-        <small class="spell-owner">${hero.name.split(' • ')[0]}</small><span class="ability-glyph" data-spell-glyph>${spellGlyph[spell.id]}</span><strong data-spell-state></strong><b data-spell-key>${spellShortcut[spell.id]}</b>
-      </button>`)).join('');
     }
 
     for (const hero of heroes) {
@@ -791,20 +801,25 @@ export class GameUI {
       if (!card) continue;
       const selected = this.controller.selection.kind === 'hero' && this.controller.selection.heroId === hero.id;
       const casting = this.controller.armedSpell?.heroId === hero.id;
+      const expanded = this.expandedHero === hero.id;
       const respawn = Math.ceil(hero.respawnTime);
-      const charge = Math.max(0, 1 - hero.ultimateCooldown / hero.ultimateMax);
       const health = Math.max(0, hero.hp / hero.maxHp);
       const xp = heroXpProgress(hero.level, hero.xp);
       const maxLevel = hero.level >= HERO_LEVEL_THRESHOLDS.length;
       card.classList.toggle('is-selected', selected);
       card.classList.toggle('is-casting', casting);
+      card.classList.toggle('is-expanded', expanded);
       card.classList.toggle('is-down', !hero.alive);
-      const select = card.querySelector<HTMLButtonElement>('.hero-card-hit');
-      select?.setAttribute('aria-label', `Select ${hero.name} • ${hero.alive ? `${Math.ceil(hero.hp)} health` : `respawns in ${respawn}`}`);
+      card.dataset.healthBand = health <= 0.25 ? 'critical' : health <= 0.6 ? 'wounded' : 'healthy';
+      const select = card.querySelector<HTMLButtonElement>('.hero-card-toggle');
+      select?.setAttribute('aria-label', expanded ? `Collapse ${hero.name.split(' • ')[0]}` : `Select and expand ${hero.name.split(' • ')[0]} • ${hero.alive ? `${Math.ceil(hero.hp)} health` : `respawns in ${respawn}`}`);
       select?.setAttribute('aria-pressed', String(selected));
+      select?.setAttribute('aria-expanded', String(expanded));
       select?.setAttribute('title', hero.name);
-      card.querySelector<HTMLElement>('[data-hero-charge]')?.style.setProperty('--charge', String(charge));
       card.querySelector<HTMLElement>('[data-hero-health]')?.style.setProperty('--health', String(health));
+      card.querySelector<HTMLElement>('.hero-portrait')?.style.setProperty('--health', String(health));
+      const details = card.querySelector<HTMLElement>('[data-hero-details]');
+      if (details) details.hidden = !expanded;
       const respawnLabel = card.querySelector<HTMLElement>('[data-hero-respawn]');
       if (respawnLabel) { respawnLabel.textContent = String(respawn); respawnLabel.classList.toggle('is-visible', !hero.alive); }
       const setCardText = (selector: string, value: string): void => { const node = card.querySelector<HTMLElement>(selector); if (node && node.textContent !== value) node.textContent = value; };
@@ -825,7 +840,7 @@ export class GameUI {
       });
 
       for (const spell of activeSpellsFor(hero)) {
-        const button = commandBar.querySelector<HTMLButtonElement>(`[data-hero="${hero.id}"][data-spell="${spell.id}"]`);
+        const button = card.querySelector<HTMLButtonElement>(`[data-hero="${hero.id}"][data-spell="${spell.id}"]`);
         if (!button) continue;
         const cooldown = Math.ceil(hero.spellCooldowns[spell.id]);
         const armed = this.controller.armedSpell?.heroId === hero.id && this.controller.armedSpell.spellId === spell.id;
@@ -844,7 +859,6 @@ export class GameUI {
         if (key) key.textContent = armed ? 'ESC' : String(spellShortcut[spell.id]);
       }
     }
-    commandBar.classList.toggle('is-targeting', Boolean(this.controller.armedSpell));
   }
 
   private renderSelection(): void {

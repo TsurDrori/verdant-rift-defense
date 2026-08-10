@@ -11,6 +11,13 @@ async function enterBattle(page: Page): Promise<void> {
   await expect(page.locator('canvas')).toBeVisible();
 }
 
+async function expandHero(page: Page, hero: 'Kael' | 'Lyra'): Promise<void> {
+  const card = page.locator(`[data-hero-card="${hero.toLowerCase()}"]`);
+  if (!(await card.evaluate((node) => node.classList.contains('is-expanded')))) {
+    await card.getByRole('button', { name: new RegExp(`Select and expand ${hero}`) }).click();
+  }
+}
+
 async function clickWorld(page: Page, x: number, y: number, button: 'left' | 'right' = 'left'): Promise<void> {
   const box = await page.locator('canvas').boundingBox();
   if (!box) throw new Error('Battlefield canvas did not receive a layout box.');
@@ -19,6 +26,7 @@ async function clickWorld(page: Page, x: number, y: number, button: 'left' | 'ri
 
 test('armed hero spell owns the world pointer instead of selecting an underlying foundation', async ({ page }) => {
   await enterBattle(page);
+  await expandHero(page, 'Kael');
   await page.getByRole('button', { name: /Cast Rift Quake.*Kael/ }).click();
 
   await expect(page.locator('[data-spell="rift-quake"]')).toHaveClass(/is-armed/);
@@ -40,6 +48,7 @@ test('armed hero spell owns the world pointer instead of selecting an underlying
 
 test('a valid cast passes through an interactive hero without selecting or moving it', async ({ page }) => {
   await enterBattle(page);
+  await expandHero(page, 'Kael');
   const before = await page.evaluate(() => {
     const hero = window.__VERDANT_RIFT__!.snapshot().heroes.find((candidate) => candidate.id === 'kael')!;
     return { x: hero.x, y: hero.y, target: hero.target };
@@ -68,6 +77,7 @@ test('a valid cast passes through an interactive hero without selecting or movin
 
 test('Escape and secondary click cancel targeting and restore normal world selection', async ({ page }) => {
   await enterBattle(page);
+  await expandHero(page, 'Kael');
   const cast = page.locator('[data-spell="rift-quake"]');
 
   await cast.click();
@@ -85,15 +95,17 @@ test('Escape and secondary click cancel targeting and restore normal world selec
 test('cast controls stay explicit and touch-sized on a portrait viewport', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await enterBattle(page);
-  const castButtons = page.locator('[data-action="spell"]');
-  await expect(castButtons).toHaveCount(2);
-  for (const button of await castButtons.all()) {
+  for (const hero of ['Kael', 'Lyra'] as const) {
+    await expandHero(page, hero);
+    const button = page.locator(`[data-hero-card="${hero.toLowerCase()}"] [data-action="spell"]`);
+    await expect(button).toHaveCount(1);
     const box = await button.boundingBox();
     expect(box).not.toBeNull();
     expect(box!.width).toBeGreaterThanOrEqual(44);
     expect(box!.height).toBeGreaterThanOrEqual(44);
   }
 
+  await expandHero(page, 'Kael');
   const kaelCast = page.locator('[data-spell="rift-quake"]');
   await kaelCast.click();
   await expect(kaelCast).toHaveAttribute('aria-pressed', 'true');
@@ -128,6 +140,7 @@ test('hero artifacts expose one persisted pre-battle tradeoff per hero', async (
 
 test('level-four heroes expose a second active spell without turning the HUD into an inventory bar', async ({ page }) => {
   await enterBattle(page);
+  await expandHero(page, 'Kael');
   await page.evaluate(() => {
     const controller = window.__VERDANT_RIFT__!;
     const hero = (controller.simulation as unknown as { heroes: Array<{ id: string; level: number; unlockedSpells: string[] }> }).heroes.find((candidate) => candidate.id === 'kael')!;
@@ -136,10 +149,10 @@ test('level-four heroes expose a second active spell without turning the HUD int
     controller.update(0);
   });
 
-  const commandBar = page.locator('[data-hero-command-bar]');
-  await expect(commandBar.locator('[data-hero="kael"][data-spell]')).toHaveCount(2);
-  await expect(commandBar.locator('[data-spell="rift-quake"]')).toBeVisible();
-  const pulse = commandBar.locator('[data-spell="warden-pulse"]');
+  const card = page.locator('[data-hero-card="kael"]');
+  await expect(card.locator('[data-hero="kael"][data-spell]')).toHaveCount(2);
+  await expect(card.locator('[data-spell="rift-quake"]')).toBeVisible();
+  const pulse = card.locator('[data-spell="warden-pulse"]');
   await expect(pulse).toBeVisible();
   expect((await pulse.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await pulse.click();

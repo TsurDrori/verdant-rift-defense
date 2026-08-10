@@ -61,6 +61,8 @@ for (const viewport of [
     await page.setViewportSize(viewport);
     await begin(page);
     for (const card of await page.locator('[data-hero-card]').all()) {
+      const hero = await card.getAttribute('data-hero-card');
+      await card.getByRole('button', { name: new RegExp(`Select and expand ${hero === 'kael' ? 'Kael' : 'Lyra'}`) }).click();
       for (const selector of ['[data-hero-level]', '[data-hero-hp]', '[data-hero-xp]', '.hero-xp-track']) {
         const box = await card.locator(selector).boundingBox();
         expect(box, `${selector} at ${viewport.width}×${viewport.height}`).not.toBeNull();
@@ -197,7 +199,7 @@ test('briefing, pause, and end dialogs are modal, inert the HUD, and contain key
 test('the world hero-health bar exposes the first authoritative hit without lagging the card', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 900 });
   await begin(page);
-  await page.getByRole('button', { name: /Select Kael/ }).click();
+  await page.getByRole('button', { name: /Select and expand Kael/ }).click();
   await page.getByRole('button', { name: /CALL WAVE/ }).click();
 
   const hit = await page.evaluate(() => {
@@ -240,7 +242,7 @@ test('the world hero-health bar exposes the first authoritative hit without lagg
   expect(hit.event).toMatchObject({ type: 'ally-hit', amount: 34.56, hp: 385.44 });
   await expect(page.locator('[data-hero-card="kael"] [data-hero-hp]')).toHaveText('HP 386 / 420');
 
-  const bar = await expect.poll(() => page.evaluate(() => {
+  await expect.poll(() => page.evaluate(() => {
     const game = window.__VERDANT_RIFT_GAME__!;
     const scene = game.scene.getScenes(true).find((candidate) => 'heroViews' in candidate) as unknown as {
       heroViews: Map<string, { getData(key: string): { displayWidth: number; width: number; alpha: number; fillAlpha: number } }>;
@@ -248,9 +250,16 @@ test('the world hero-health bar exposes the first authoritative hit without lagg
     const view = scene.heroViews.get('kael')!;
     const hp = view.getData('hp');
     const back = view.getData('hpBack');
-    return { displayWidth: hp.displayWidth, width: hp.width, alpha: hp.alpha, backAlpha: back.fillAlpha };
-  })).toMatchObject({ alpha: 1, backAlpha: 0.94 });
-  void bar;
+    return { displayWidth: hp.displayWidth, width: hp.width, alpha: hp.alpha, fillAlpha: hp.fillAlpha, backAlpha: back.fillAlpha };
+  })).toMatchObject({ alpha: 1, fillAlpha: 1, backAlpha: 0.94 });
+  const bar = await page.evaluate(() => {
+    const scene = window.__VERDANT_RIFT_GAME__!.scene.getScenes(true).find((candidate) => 'heroViews' in candidate) as unknown as {
+      heroViews: Map<string, { getData(key: string): { displayWidth: number; width: number } }>;
+    };
+    const hp = scene.heroViews.get('kael')!.getData('hp');
+    return { displayWidth: hp.displayWidth, width: hp.width };
+  });
+  expect(bar.displayWidth).toBeLessThan(bar.width);
 
   const rendered = await page.evaluate(() => {
     const game = window.__VERDANT_RIFT_GAME__!;
@@ -261,6 +270,7 @@ test('the world hero-health bar exposes the first authoritative hit without lagg
     return { displayWidth: hp.displayWidth, width: hp.width, alpha: hp.alpha };
   });
   expect(rendered.displayWidth).toBeCloseTo(rendered.width * hit.hp / hit.maxHp, 4);
+  await page.screenshot({ path: 'test-results/hero-dock/world-hp-injured.png' });
 
   await page.evaluate(() => {
     const hero = (window.__VERDANT_RIFT__!.simulation as unknown as {

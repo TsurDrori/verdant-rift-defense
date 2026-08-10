@@ -6,6 +6,13 @@ async function enterBattle(page: Page): Promise<void> {
   await expect.poll(() => page.evaluate(() => window.__VERDANT_RIFT__!.snapshot().phase)).toBe('playing');
 }
 
+async function expandHero(page: Page, hero: 'Kael' | 'Lyra'): Promise<void> {
+  const card = page.locator(`[data-hero-card="${hero.toLowerCase()}"]`);
+  if (!(await card.evaluate((node) => node.classList.contains('is-expanded')))) {
+    await card.getByRole('button', { name: new RegExp(`Select and expand ${hero}`) }).click();
+  }
+}
+
 async function clickWorld(page: Page, x: number, y: number): Promise<void> {
   const bounds = await page.locator('canvas').boundingBox();
   if (!bounds) throw new Error('Battlefield canvas did not receive a layout box.');
@@ -22,6 +29,7 @@ test('hero card body is one reliable selection target', async ({ page }) => {
 
 test('spell control survives a deliberate pointer hold while cooldown state renders', async ({ page }) => {
   await enterBattle(page);
+  await expandHero(page, 'Kael');
   await page.evaluate(() => {
     const controller = window.__VERDANT_RIFT__!;
     const lyra = (controller.simulation as unknown as { heroes: Array<{ id: string; spellCooldowns: Record<string, number> }> }).heroes.find((hero) => hero.id === 'lyra')!;
@@ -51,6 +59,7 @@ test('spell control survives a deliberate pointer hold while cooldown state rend
 
 test('armed spell button becomes the cancel button in place', async ({ page }) => {
   await enterBattle(page);
+  await expandHero(page, 'Kael');
   const spell = page.locator('[data-spell="rift-quake"]');
   await expect(spell).toHaveAttribute('aria-label', /Cast Rift Quake.*Kael/);
   await spell.click();
@@ -86,7 +95,7 @@ test('invisible tower tolerance never steals a selected hero road command', asyn
 });
 
 for (const viewport of [{ width: 390, height: 844 }, { width: 740, height: 360 }]) {
-  test(`four-spell command rail remains touch-sized and clear at ${viewport.width}×${viewport.height}`, async ({ page }) => {
+  test(`expanded hero spell controls remain touch-sized and clear at ${viewport.width}×${viewport.height}`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await enterBattle(page);
     await page.evaluate(() => {
@@ -98,23 +107,25 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 740, height: 360 }
       lyra.level = 4; lyra.unlockedSpells = ['starfall', 'astral-echo', 'falling-constellation'];
       controller.update(0);
     });
-    const rail = page.locator('[data-hero-command-bar]');
-    const buttons = rail.locator('[data-spell]');
-    await expect(buttons).toHaveCount(4);
-    const railBox = await rail.boundingBox();
-    if (!railBox) throw new Error('Hero command rail did not receive a layout box.');
-    for (const button of await buttons.all()) {
-      const box = await button.boundingBox();
-      expect(box).not.toBeNull();
-      expect(box!.width).toBeGreaterThanOrEqual(44);
-      expect(box!.height).toBeGreaterThanOrEqual(44);
-    }
-    for (const selector of ['[data-hero-dock]', '[data-wave-card]']) {
-      const box = await page.locator(selector).boundingBox();
-      if (!box) continue;
-      const overlap = Math.max(0, Math.min(railBox.x + railBox.width, box.x + box.width) - Math.max(railBox.x, box.x))
-        * Math.max(0, Math.min(railBox.y + railBox.height, box.y + box.height) - Math.max(railBox.y, box.y));
-      expect(overlap).toBe(0);
+    for (const hero of ['Kael', 'Lyra'] as const) {
+      await expandHero(page, hero);
+      const card = page.locator(`[data-hero-card="${hero.toLowerCase()}"]`);
+      const buttons = card.locator('[data-spell]');
+      await expect(buttons).toHaveCount(2);
+      const cardBox = await card.boundingBox();
+      if (!cardBox) throw new Error(`${hero} expanded card did not receive a layout box.`);
+      for (const button of await buttons.all()) {
+        const box = await button.boundingBox();
+        expect(box).not.toBeNull();
+        expect(box!.width).toBeGreaterThanOrEqual(44);
+        expect(box!.height).toBeGreaterThanOrEqual(44);
+      }
+      const wave = await page.locator('[data-wave-card]').boundingBox();
+      if (wave) {
+        const overlap = Math.max(0, Math.min(cardBox.x + cardBox.width, wave.x + wave.width) - Math.max(cardBox.x, wave.x))
+          * Math.max(0, Math.min(cardBox.y + cardBox.height, wave.y + wave.height) - Math.max(cardBox.y, wave.y));
+        expect(overlap).toBe(0);
+      }
     }
   });
 }

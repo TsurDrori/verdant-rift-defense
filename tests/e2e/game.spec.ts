@@ -111,7 +111,7 @@ test('keeps primary controls visible at a phone landscape viewport', async ({ pa
   await page.getByRole('button', { name: /ENTER THE RIFT/ }).click();
   await expect(page.getByLabel('Battle status')).toBeVisible();
   await expect(page.getByRole('button', { name: /CALL WAVE/ })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Select Kael • Rift Warden' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Select and expand Kael/ })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Toggle battle speed' })).toBeVisible();
   const viewportProof = await page.evaluate(() => {
     const selectors = ['[aria-label="Battle status"]', '[aria-label="Toggle battle speed"]', '[data-wave-card]'];
@@ -161,7 +161,7 @@ test('provides a touch-sized portrait focus with one-action overview recovery', 
   expect(layout.scrollLeft).toBeGreaterThan(200);
   expect(layout.documentWidth).toBe(390);
   expect(layout.documentHeight).toBe(844);
-  expect(layout.heroes!.right).toBeLessThan(layout.wave!.left);
+  expect(layout.heroes!.top).toBeGreaterThanOrEqual(layout.wave!.bottom);
   await expect(page.getByRole('button', { name: 'Show battlefield overview' })).toBeVisible();
   await page.getByRole('button', { name: 'Show battlefield overview' }).click();
   await expect.poll(() => page.locator('canvas').evaluate((canvas) => canvas.getBoundingClientRect().width)).toBeCloseTo(390, 0);
@@ -242,7 +242,7 @@ for (const viewport of responsiveViewports) {
       page.getByRole('button', { name: 'Pause' }),
       page.getByRole('button', { name: 'Toggle battle speed' }),
       page.getByRole('button', { name: /CALL WAVE/ }),
-      page.getByRole('button', { name: 'Select Kael • Rift Warden' }),
+      page.getByRole('button', { name: /Select and expand Kael/ }),
     ]) {
       const bounds = await control.boundingBox();
       expect(bounds).not.toBeNull();
@@ -359,7 +359,10 @@ test('constrained left panel never overlaps hero controls and all hero actions r
   await expect(page.locator('[data-hero-dock]')).toBeHidden();
   await page.getByRole('button', { name: /Close tower controls/ }).click();
   await expect(page.locator('[data-hero-dock]')).toBeVisible();
-  for (const ability of await page.locator('.ability-button').all()) {
+  for (const hero of ['Kael', 'Lyra'] as const) {
+    await page.getByRole('button', { name: new RegExp(`Select and expand ${hero}`) }).click();
+    const ability = page.locator(`[data-hero-card="${hero.toLowerCase()}"] .ability-button`);
+    await expect(ability).toBeVisible();
     const box = await ability.boundingBox();
     expect(box).not.toBeNull();
     expect(box!.width).toBeGreaterThanOrEqual(44);

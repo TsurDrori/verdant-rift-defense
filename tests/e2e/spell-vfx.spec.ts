@@ -188,6 +188,7 @@ test('renders authoritative artifact-scaled cast and effect radii for each armed
     await page.mouse.move(canvas.x + canvas.width * ((hero.x - 42) / 1600), canvas.y + canvas.height * ((hero.y - 28) / 900));
   };
 
+  await page.getByRole('button', { name: /Select and expand Lyra/ }).click();
   await page.getByRole('button', { name: /Cast Starfall.*Lyra/ }).click();
   await moveNearLyra();
   await expect.poll(() => inspectRings().then((result) => result.effectVisible)).toBe(true);
