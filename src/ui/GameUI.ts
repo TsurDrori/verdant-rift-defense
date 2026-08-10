@@ -11,14 +11,9 @@ import type { DifficultyId } from '../game/simulation/state';
 import { GameController } from '../phaser/adapters/GameController';
 import type { SpellTargetPreview } from '../phaser/adapters/GameController';
 import { renderFrontEndContent, renderFrontEndFrame, type FrontEndRenderState, type FrontEndRoute } from './FrontEndShell';
+import { cancelIconMarkup, spellIconMarkup } from './spellIcons';
 
 const towerGlyph: Record<TowerId, string> = { thorn: '➶', ember: '✹', aegis: '♜', astral: '✦' };
-const spellGlyph: Readonly<Record<HeroActiveSpellId, string>> = {
-  'rift-quake': '❈',
-  'warden-pulse': '✥',
-  starfall: '✧',
-  'falling-constellation': '✦',
-};
 const spellShortcut: Readonly<Record<HeroActiveSpellId, number>> = {
   'rift-quake': 1,
   starfall: 2,
@@ -92,7 +87,9 @@ export class GameUI {
   private muted = localStorage.getItem('verdant-rift:muted') === 'true';
   private highContrast = localStorage.getItem('verdant-rift:contrast') === 'true';
   private reducedMotion = localStorage.getItem('verdant-rift:motion') === 'reduced';
-  private viewMode: 'focus' | 'overview' = window.matchMedia('(max-width: 620px)').matches ? 'focus' : 'overview';
+  // Portrait begins with the whole battlefield contained. Players opt into a
+  // touch-sized tactical zoom instead of landing inside an unexplained crop.
+  private viewMode: 'focus' | 'overview' = 'overview';
   private focusWorldX = 800;
   private portraitLayout = window.matchMedia('(max-width: 620px)').matches;
   private contextPaused = false;
@@ -145,6 +142,7 @@ export class GameUI {
           <button data-action="view-pan" data-direction="-1" aria-label="Pan battlefield left"><span>‹</span></button>
           <button class="view-mode-button" data-action="view-mode" aria-label="Show battlefield overview"><b data-view-title>OVERVIEW</b><small data-view-hint>FULL MAP</small></button>
           <button data-action="view-pan" data-direction="1" aria-label="Pan battlefield right"><span>›</span></button>
+          <label class="map-pan-scrubber"><span>MAP POSITION</span><input type="range" min="0" max="1000" value="500" data-map-pan aria-label="Pan across battlefield"></label>
         </nav>
 
         <section class="boss-strip panel" data-boss-strip aria-label="Boss health">
@@ -269,6 +267,15 @@ export class GameUI {
       this.render();
     });
     this.root.addEventListener('input', (event) => {
+      const scrubber = (event.target as HTMLElement).closest<HTMLInputElement>('[data-map-pan]');
+      if (!scrubber || !this.portraitLayout || this.viewMode !== 'focus') return;
+      const gameRoot = document.querySelector<HTMLElement>('#game-root');
+      if (!gameRoot) return;
+      const maximum = Math.max(0, gameRoot.scrollWidth - gameRoot.clientWidth);
+      gameRoot.scrollLeft = maximum * (Number(scrubber.value) / 1000);
+      this.captureFocusedWorld();
+    });
+    this.root.addEventListener('input', (event) => {
       const input = (event.target as HTMLElement).closest<HTMLInputElement>('input[data-audio-channel]');
       if (!input) return;
       const channel = input.dataset.audioChannel as AudioChannel;
@@ -326,7 +333,13 @@ export class GameUI {
     });
     document.querySelector<HTMLElement>('#game-root')?.addEventListener('scroll', () => this.captureFocusedWorld(), { passive: true });
     this.root.querySelector<HTMLElement>('[data-selection-panel]')?.addEventListener('scroll', () => this.syncPanelScrollAffordance(), { passive: true });
-    window.addEventListener('resize', () => requestAnimationFrame(() => this.syncResponsiveLayout()));
+    const scheduleResponsiveSync = (): void => {
+      requestAnimationFrame(() => requestAnimationFrame(() => this.syncResponsiveLayout()));
+    };
+    window.addEventListener('resize', scheduleResponsiveSync);
+    window.addEventListener('orientationchange', scheduleResponsiveSync);
+    window.visualViewport?.addEventListener('resize', scheduleResponsiveSync);
+    window.screen.orientation?.addEventListener('change', scheduleResponsiveSync);
   }
 
   /**
@@ -396,7 +409,11 @@ export class GameUI {
     const spell = heroSpellSpec(armed.spellId);
     this.setText('[data-cast-hero]', `${hero?.name.split(' • ')[0] ?? armed.heroId} • SPELL TARGETING`);
     this.setText('[data-cast-name]', spell.name);
-    this.setText('[data-cast-glyph]', spellGlyph[armed.spellId]);
+    const castGlyph = this.root.querySelector<HTMLElement>('[data-cast-glyph]');
+    if (castGlyph && castGlyph.dataset.icon !== armed.spellId) {
+      castGlyph.dataset.icon = armed.spellId;
+      castGlyph.innerHTML = spellIconMarkup(armed.spellId);
+    }
   }
 
   private syncCastReticle(preview: SpellTargetPreview): void {
@@ -438,6 +455,7 @@ export class GameUI {
       else this.centerFocusedWorld(this.focusWorldX, false);
     }
     else document.querySelector<HTMLElement>('#game-root')?.scrollTo({ left: 0, behavior: 'auto' });
+    this.syncPanScrubber();
   }
 
   private setViewMode(mode: 'focus' | 'overview', worldX = this.focusWorldX): void {
@@ -469,6 +487,7 @@ export class GameUI {
     const canvas = root?.querySelector<HTMLCanvasElement>('canvas');
     if (!root || !canvas || canvas.offsetWidth === 0) return;
     this.focusWorldX = Math.max(0, Math.min(1600, ((root.scrollLeft + root.clientWidth / 2 - canvas.offsetLeft) / canvas.offsetWidth) * 1600));
+    this.syncPanScrubber();
   }
 
   private centerFocusedWorld(worldX: number, smooth = false): void {
@@ -477,6 +496,15 @@ export class GameUI {
     if (!root || !canvas) return;
     const left = canvas.offsetLeft + canvas.offsetWidth * (worldX / 1600) - root.clientWidth / 2;
     root.scrollTo({ left: Math.max(0, Math.min(root.scrollWidth - root.clientWidth, left)), behavior: smooth && !this.reducedMotion ? 'smooth' : 'auto' });
+    requestAnimationFrame(() => this.syncPanScrubber());
+  }
+
+  private syncPanScrubber(): void {
+    const scrubber = this.root.querySelector<HTMLInputElement>('[data-map-pan]');
+    const root = document.querySelector<HTMLElement>('#game-root');
+    if (!scrubber || !root) return;
+    const maximum = Math.max(0, root.scrollWidth - root.clientWidth);
+    scrubber.value = String(maximum > 0 ? Math.round((root.scrollLeft / maximum) * 1000) : 500);
   }
 
   private syncResponsiveLayout(): void {
@@ -790,7 +818,7 @@ export class GameUI {
         <div class="hero-details" data-hero-details hidden>
           <div class="hero-copy"><small><span class="hero-rank-label">CHAMPION ${index + 1} • </span><strong data-hero-level></strong></small><b>${hero.name.split(' • ')[0]}</b><span data-hero-hp></span><div class="hero-xp-row"><span data-hero-xp></span><em>${[2, 4, 6].map((level, milestoneIndex) => `<i class="hero-milestone" data-milestone="${milestoneIndex}" title="Unlocks at level ${level}" aria-label="Unlocks at level ${level}"></i>`).join('')}</em></div><div class="hero-xp-track" role="progressbar" aria-label="${hero.name} experience" aria-valuemin="0"><i data-hero-xp-fill></i></div></div>
           <div class="hero-spell-stack">${activeSpellsFor(hero).map((spell) => `<button type="button" class="ability-button hero-command-spell" data-action="spell" data-hero="${hero.id}" data-spell="${spell.id}" style="--hero:#${hero.accent.toString(16).padStart(6, '0')}" title="${spell.description}">
-            <span class="ability-glyph" data-spell-glyph>${spellGlyph[spell.id]}</span><strong data-spell-state></strong><b data-spell-key>${spellShortcut[spell.id]}</b>
+            <span class="ability-glyph" data-spell-glyph data-icon-state="${spell.id}">${spellIconMarkup(spell.id)}</span><strong data-spell-state></strong><b data-spell-key>${spellShortcut[spell.id]}</b>
           </button>`).join('')}</div>
         </div>
       </article>`).join('');
@@ -852,7 +880,11 @@ export class GameUI {
         button.setAttribute('aria-pressed', String(armed));
         button.setAttribute('aria-label', armed ? `Cancel ${spell.name} targeting` : hero.alive ? `${verb} ${spell.name} — ${hero.name.split(' • ')[0]}` : `${hero.name} respawns in ${respawn}`);
         const glyph = button.querySelector<HTMLElement>('[data-spell-glyph]');
-        if (glyph) glyph.textContent = armed ? '×' : spellGlyph[spell.id];
+        const iconState = armed ? 'cancel' : spell.id;
+        if (glyph && glyph.dataset.iconState !== iconState) {
+          glyph.dataset.iconState = iconState;
+          glyph.innerHTML = armed ? cancelIconMarkup() : spellIconMarkup(spell.id);
+        }
         const state = button.querySelector<HTMLElement>('[data-spell-state]');
         if (state) state.textContent = armed ? 'CANCEL' : cooldown > 0 ? String(cooldown) : spell.targeting === 'self' ? 'USE' : 'CAST';
         const key = button.querySelector<HTMLElement>('[data-spell-key]');

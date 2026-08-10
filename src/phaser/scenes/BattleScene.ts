@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { ASSETS } from '../../game/assets/manifest';
-import { COMBAT_BALANCE } from '../../game/content/combatBalance';
-import { BUILD_PADS, pointInPathLane, projectPointToPath } from '../../game/simulation/geometry';
+import { ACTIVE_BATTLE_MAP } from '../../game/content/maps';
+import { BUILD_PADS, PATH_HALF_WIDTH, pointInPathLane, projectPointToPath } from '../../game/simulation/geometry';
 import type { AttackPresentationEvent, GameEvent, ProjectileStyle } from '../../game/simulation/state';
 import { GameController } from '../adapters/GameController';
 import {
@@ -52,8 +52,9 @@ export class BattleScene extends Phaser.Scene {
   create(): void {
     this.spellEffects = new SpellEffects(this);
     this.cameras.main.setBackgroundColor(0x071310);
-    this.add.image(800, 450, ASSETS.environment.verdantRift).setDisplaySize(1600, 900).setDepth(0);
-    this.add.rectangle(800, 450, 1600, 900, 0x071410, 0.08).setDepth(1);
+    const { width, height } = ACTIVE_BATTLE_MAP.world;
+    this.add.image(width / 2, height / 2, ASSETS.environment.verdantRift).setDisplaySize(width, height).setDepth(0);
+    this.add.rectangle(width / 2, height / 2, width, height, 0x071410, 0.08).setDepth(1);
     this.createAuthoritativeRoad();
     this.createAmbientFx();
     this.createRouteCues();
@@ -156,9 +157,9 @@ export class BattleScene extends Phaser.Scene {
     const corridor = this.add.graphics().setDepth(2).setName('authoritative-road-corridor');
     const steps = 96;
     const centerline = Array.from({ length: steps + 1 }, (_, index) => pointInPathLane(index / steps, 0));
-    const leftEdge = Array.from({ length: steps + 1 }, (_, index) => pointInPathLane(index / steps, -COMBAT_BALANCE.lanes.halfWidth));
-    const rightEdge = Array.from({ length: steps + 1 }, (_, index) => pointInPathLane(index / steps, COMBAT_BALANCE.lanes.halfWidth));
-    corridor.setData('halfWidth', COMBAT_BALANCE.lanes.halfWidth).setData('source', 'PATH_POINTS');
+    const leftEdge = Array.from({ length: steps + 1 }, (_, index) => pointInPathLane(index / steps, -PATH_HALF_WIDTH));
+    const rightEdge = Array.from({ length: steps + 1 }, (_, index) => pointInPathLane(index / steps, PATH_HALF_WIDTH));
+    corridor.setData('halfWidth', PATH_HALF_WIDTH).setData('source', 'TILED_MAP');
     // Thin exact boundaries reconcile the painted stones with navigation truth
     // without laying an opaque polygon over the environment illustration.
     corridor.lineStyle(1.5, 0xf0dfa3, 0.18).strokePoints(centerline, false, false);
@@ -170,12 +171,16 @@ export class BattleScene extends Phaser.Scene {
       const outside = pointInPathLane(progress, 6);
       corridor.lineBetween(inside.x, inside.y, outside.x, outside.y);
     }
+    // Authored geometry is visible in Tiled and through ?debugMap=1. Keeping
+    // the diagnostic corridor out of normal play prevents editor guides from
+    // competing with the painted road.
+    corridor.setVisible(new URLSearchParams(window.location.search).has('debugMap'));
   }
 
   private routeProxyToSelectedHero(pointer: Phaser.Input.Pointer): boolean {
     if (this.controller.isSpellCastMode() || this.controller.selection.kind !== 'hero') return false;
     const point = { x: pointer.worldX, y: pointer.worldY };
-    if (projectPointToPath(point).distance > COMBAT_BALANCE.lanes.halfWidth + 8) return false;
+    if (projectPointToPath(point).distance > PATH_HALF_WIDTH + 8) return false;
     this.controller.worldAction(point);
     return true;
   }
@@ -191,18 +196,20 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private createRouteCues(): void {
-    const entrance = this.add.container(174, 132).setDepth(86);
+    const entranceMarker = ACTIVE_BATTLE_MAP.markers.entrance;
+    const entrance = this.add.container(entranceMarker.x, entranceMarker.y).setDepth(86);
     const enterPlate = this.add.rectangle(0, -27, 132, 22, 0x071b17, 0.82).setStrokeStyle(1, 0xb7edc9, 0.42);
-    const enterLabel = this.add.text(0, -27, 'RIFT APPROACH', { fontFamily: 'Trebuchet MS, sans-serif', fontSize: '12px', fontStyle: 'bold', color: '#eaffdf', stroke: '#10221d', strokeThickness: 3 }).setOrigin(0.5);
+    const enterLabel = this.add.text(0, -27, entranceMarker.label, { fontFamily: 'Trebuchet MS, sans-serif', fontSize: '12px', fontStyle: 'bold', color: '#eaffdf', stroke: '#10221d', strokeThickness: 3 }).setOrigin(0.5);
     const enterChevrons = [0, 1, 2].map((index) => this.add.polygon(-24 + index * 24, 0, [-10, -8, 0, 0, -10, 8, -4, 8, 7, 0, -4, -8], 0xcaffc9, 0.55).setStrokeStyle(1,0x0a2a24,0.8));
     entrance.add([enterPlate, enterLabel, ...enterChevrons]).setRotation(0.16);
     enterChevrons.forEach((chevron, index) => this.tweens.add({ targets: chevron, alpha: { from: 0.2, to: 0.88 }, duration: 560, delay: index * 150, yoyo: true, repeat: -1 }));
 
-    const exit = this.add.container(145, 817).setDepth(86);
+    const gateMarker = ACTIVE_BATTLE_MAP.markers.gate;
+    const exit = this.add.container(gateMarker.x, gateMarker.y).setDepth(86);
     const exitRing = this.add.ellipse(0, 0, 126, 56, 0xffce5c, 0.08).setStrokeStyle(3, 0xffdf79, 0.58).setBlendMode(Phaser.BlendModes.ADD);
     const crest = this.add.polygon(-43, -38, [0,-13,12,-6,10,9,0,15,-10,9,-12,-6],0xc69d42,0.95).setStrokeStyle(2,0xffe69d,0.8);
     const gatePlate = this.add.rectangle(9, -38, 78, 28, 0x342611, 0.9).setStrokeStyle(2,0xe1bd5e,0.76);
-    const exitLabel = this.add.text(-1, -38, 'GATE', { fontFamily: 'Trebuchet MS, sans-serif', fontSize: '10px', fontStyle: 'bold', color: '#ffe7a0' }).setOrigin(0.5);
+    const exitLabel = this.add.text(-1, -38, gateMarker.label, { fontFamily: 'Trebuchet MS, sans-serif', fontSize: '10px', fontStyle: 'bold', color: '#ffe7a0' }).setOrigin(0.5);
     this.gateValueText = this.add.text(34, -38, '20', { fontFamily: 'Georgia, serif', fontSize: '17px', fontStyle: 'bold', color: '#fff4c6', stroke: '#2d1c08', strokeThickness: 3 }).setOrigin(0.5);
     exit.add([exitRing, gatePlate, crest, exitLabel, this.gateValueText]);
     this.tweens.add({ targets: exitRing, scale: { from: 0.82, to: 1.12 }, alpha: { from: 0.1, to: 0.45 }, duration: 980, yoyo: true, repeat: -1, ease: 'Sine.InOut' });

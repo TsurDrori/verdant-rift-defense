@@ -4,7 +4,7 @@ import { BattleScene } from './scenes/BattleScene';
 import { BootScene } from './scenes/BootScene';
 
 export function createGame(parent: string, controller: GameController): Phaser.Game {
-  return new Phaser.Game({
+  const game = new Phaser.Game({
     type: Phaser.AUTO,
     parent,
     width: 1600,
@@ -26,4 +26,17 @@ export function createGame(parent: string, controller: GameController): Phaser.G
     input: { activePointers: 3 },
     banner: false,
   });
+  // Mobile browser chrome and physical rotation can resize the visual viewport
+  // without delivering one clean window resize. Refreshing on all standardized
+  // signals keeps Phaser's CSS scale and pointer bounds synchronized.
+  const refreshScale = (): void => {
+    requestAnimationFrame(() => {
+      game.scale.refresh();
+      game.scale.updateBounds();
+    });
+  };
+  window.addEventListener('orientationchange', refreshScale);
+  window.visualViewport?.addEventListener('resize', refreshScale);
+  window.screen.orientation?.addEventListener('change', refreshScale);
+  return game;
 }

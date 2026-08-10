@@ -1,4 +1,7 @@
-export interface Vec2 { x: number; y: number }
+import { ACTIVE_BATTLE_MAP } from '../content/maps';
+import type { Vec2 } from './geometryTypes';
+
+export type { Vec2 } from './geometryTypes';
 
 export interface PathProjection {
   point: Vec2;
@@ -11,19 +14,9 @@ export interface PathProjection {
 
 export const distance = (a: Vec2, b: Vec2): number => Math.hypot(a.x - b.x, a.y - b.y);
 
-export const PATH_POINTS: readonly Vec2[] = [
-  { x: 130, y: -30 }, { x: 245, y: 58 }, { x: 225, y: 154 }, { x: 355, y: 229 },
-  { x: 575, y: 247 }, { x: 720, y: 190 }, { x: 880, y: 128 }, { x: 1080, y: 152 },
-  { x: 1190, y: 238 }, { x: 1258, y: 355 }, { x: 1315, y: 482 }, { x: 1308, y: 606 },
-  { x: 1205, y: 731 }, { x: 1035, y: 761 }, { x: 865, y: 726 }, { x: 690, y: 704 },
-  { x: 510, y: 740 }, { x: 360, y: 792 }, { x: 236, y: 818 }, { x: 135, y: 830 },
-] as const;
-
-export const BUILD_PADS: readonly Vec2[] = [
-  { x: 394, y: 154 }, { x: 575, y: 327 }, { x: 1025, y: 207 }, { x: 1244, y: 263 },
-  { x: 1238, y: 423 }, { x: 1375, y: 547 }, { x: 1287, y: 683 }, { x: 1117, y: 731 },
-  { x: 906, y: 676 }, { x: 753, y: 659 }, { x: 462, y: 675 },
-] as const;
+export const PATH_POINTS: readonly Vec2[] = ACTIVE_BATTLE_MAP.route.centerline;
+export const BUILD_PADS: readonly Vec2[] = ACTIVE_BATTLE_MAP.buildPads;
+export const PATH_HALF_WIDTH = ACTIVE_BATTLE_MAP.route.halfWidth;
 
 const SEGMENT_LENGTHS = PATH_POINTS.slice(0, -1).map((point, index) => distance(point, PATH_POINTS[index + 1]!));
 const SEGMENT_START_DISTANCES = SEGMENT_LENGTHS.map((_, index) => SEGMENT_LENGTHS.slice(0, index).reduce((sum, length) => sum + length, 0));

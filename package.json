@@ -4,8 +4,10 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "map:sync": "node scripts/sync-map.mjs",
+    "map:check": "node scripts/sync-map.mjs --check",
     "dev": "vite --host 0.0.0.0",
-    "build": "tsc -b && vite build",
+    "build": "pnpm map:check && tsc -b && vite build",
     "test:build-assets": "node scripts/validate-build-assets.mjs",
     "test": "vitest run",
     "test:watch": "vitest",

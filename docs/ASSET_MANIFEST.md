@@ -4,7 +4,9 @@ All shipped bitmap art was created for Verdant Rift with the built-in OpenAI ima
 
 ## Environment
 
-Runtime file: `public/assets/environment/verdant-rift.png`
+Runtime file: `public/assets/environment/verdant-rift-1600.png`
+
+The 1600×900 runtime image is also the locked background layer in `maps/verdant-rift.tmj`, so painted landmarks and authored gameplay coordinates share one exact pixel coordinate system. See `docs/MAP_AUTHORING.md`.
 
 Production prompt:
 

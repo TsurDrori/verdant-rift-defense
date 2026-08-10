@@ -90,7 +90,7 @@ test('invisible tower tolerance never steals a selected hero road command', asyn
     const object = window.__VERDANT_RIFT_GAME__!.scene.getScene('battle').children.getByName('authoritative-road-corridor') as unknown as { getData(key: string): unknown };
     return { halfWidth: object.getData('halfWidth'), source: object.getData('source') };
   });
-  expect(road).toEqual({ halfWidth: 36, source: 'PATH_POINTS' });
+  expect(road).toEqual({ halfWidth: 36, source: 'TILED_MAP' });
   await page.screenshot({ path: 'test-results/input-ownership/road-and-command-rail.png' });
 });
 

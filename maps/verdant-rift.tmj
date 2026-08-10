@@ -1,0 +1,89 @@
+{
+  "compressionlevel": -1,
+  "height": 900,
+  "infinite": false,
+  "layers": [
+    {
+      "id": 1,
+      "image": "../public/assets/environment/verdant-rift-1600.png",
+      "name": "Painted Battlefield",
+      "opacity": 1,
+      "type": "imagelayer",
+      "visible": true,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "draworder": "topdown",
+      "id": 2,
+      "name": "Navigation",
+      "objects": [
+        {
+          "class": "EnemyRoute",
+          "height": 0,
+          "id": 1,
+          "name": "enemy-route",
+          "polyline": [
+            { "x": 0, "y": 0 }, { "x": 115, "y": 88 }, { "x": 95, "y": 184 }, { "x": 225, "y": 259 },
+            { "x": 445, "y": 277 }, { "x": 590, "y": 220 }, { "x": 750, "y": 158 }, { "x": 950, "y": 182 },
+            { "x": 1060, "y": 268 }, { "x": 1128, "y": 385 }, { "x": 1185, "y": 512 }, { "x": 1178, "y": 636 },
+            { "x": 1075, "y": 761 }, { "x": 905, "y": 791 }, { "x": 735, "y": 756 }, { "x": 560, "y": 734 },
+            { "x": 380, "y": 770 }, { "x": 230, "y": 822 }, { "x": 106, "y": 848 }, { "x": 5, "y": 860 }
+          ],
+          "properties": [{ "name": "halfWidth", "type": "float", "value": 36 }],
+          "rotation": 0,
+          "visible": true,
+          "width": 0,
+          "x": 130,
+          "y": -30
+        },
+        { "class": "MapMarker", "id": 2, "name": "entrance", "point": true, "properties": [{ "name": "label", "type": "string", "value": "RIFT APPROACH" }], "rotation": 0, "visible": true, "x": 174, "y": 132 },
+        { "class": "MapMarker", "id": 3, "name": "gate", "point": true, "properties": [{ "name": "label", "type": "string", "value": "GATE" }], "rotation": 0, "visible": true, "x": 145, "y": 817 }
+      ],
+      "opacity": 1,
+      "type": "objectgroup",
+      "visible": true,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "draworder": "topdown",
+      "id": 3,
+      "name": "Build Pads",
+      "objects": [
+        { "class": "BuildPad", "ellipse": true, "height": 74, "id": 10, "name": "pad-0", "properties": [{ "name": "index", "type": "int", "value": 0 }], "rotation": 0, "visible": true, "width": 74, "x": 357, "y": 117 },
+        { "class": "BuildPad", "ellipse": true, "height": 74, "id": 11, "name": "pad-1", "properties": [{ "name": "index", "type": "int", "value": 1 }], "rotation": 0, "visible": true, "width": 74, "x": 538, "y": 290 },
+        { "class": "BuildPad", "ellipse": true, "height": 74, "id": 12, "name": "pad-2", "properties": [{ "name": "index", "type": "int", "value": 2 }], "rotation": 0, "visible": true, "width": 74, "x": 988, "y": 170 },
+        { "class": "BuildPad", "ellipse": true, "height": 74, "id": 13, "name": "pad-3", "properties": [{ "name": "index", "type": "int", "value": 3 }], "rotation": 0, "visible": true, "width": 74, "x": 1207, "y": 226 },
+        { "class": "BuildPad", "ellipse": true, "height": 74, "id": 14, "name": "pad-4", "properties": [{ "name": "index", "type": "int", "value": 4 }], "rotation": 0, "visible": true, "width": 74, "x": 1201, "y": 386 },
+        { "class": "BuildPad", "ellipse": true, "height": 74, "id": 15, "name": "pad-5", "properties": [{ "name": "index", "type": "int", "value": 5 }], "rotation": 0, "visible": true, "width": 74, "x": 1338, "y": 510 },
+        { "class": "BuildPad", "ellipse": true, "height": 74, "id": 16, "name": "pad-6", "properties": [{ "name": "index", "type": "int", "value": 6 }], "rotation": 0, "visible": true, "width": 74, "x": 1250, "y": 646 },
+        { "class": "BuildPad", "ellipse": true, "height": 74, "id": 17, "name": "pad-7", "properties": [{ "name": "index", "type": "int", "value": 7 }], "rotation": 0, "visible": true, "width": 74, "x": 1080, "y": 694 },
+        { "class": "BuildPad", "ellipse": true, "height": 74, "id": 18, "name": "pad-8", "properties": [{ "name": "index", "type": "int", "value": 8 }], "rotation": 0, "visible": true, "width": 74, "x": 869, "y": 639 },
+        { "class": "BuildPad", "ellipse": true, "height": 74, "id": 19, "name": "pad-9", "properties": [{ "name": "index", "type": "int", "value": 9 }], "rotation": 0, "visible": true, "width": 74, "x": 716, "y": 622 },
+        { "class": "BuildPad", "ellipse": true, "height": 74, "id": 20, "name": "pad-10", "properties": [{ "name": "index", "type": "int", "value": 10 }], "rotation": 0, "visible": true, "width": 74, "x": 425, "y": 638 }
+      ],
+      "opacity": 1,
+      "type": "objectgroup",
+      "visible": true,
+      "x": 0,
+      "y": 0
+    }
+  ],
+  "nextlayerid": 4,
+  "nextobjectid": 21,
+  "orientation": "orthogonal",
+  "properties": [
+    { "name": "id", "type": "string", "value": "verdant-rift" },
+    { "name": "title", "type": "string", "value": "The Sunken Way" },
+    { "name": "backgroundAsset", "type": "string", "value": "environment.verdant-rift" }
+  ],
+  "renderorder": "right-down",
+  "tiledversion": "1.12.2",
+  "tileheight": 1,
+  "tilesets": [],
+  "tilewidth": 1,
+  "type": "map",
+  "version": "1.10",
+  "width": 1600
+}

@@ -130,7 +130,7 @@ test('keeps primary controls visible at a phone landscape viewport', async ({ pa
   expect(await page.locator('#app').evaluate((element) => element.scrollTop)).toBe(0);
 });
 
-test('provides a touch-sized portrait focus with one-action overview recovery', async ({ page }) => {
+test('contains the full map in portrait and offers an explicit scrubbed tactical focus', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
   await expect(page.getByLabel('Map view controls')).toBeHidden();
@@ -154,18 +154,24 @@ test('provides a touch-sized portrait focus with one-action overview recovery', 
     };
   });
   expect(layout.canvas).not.toBeNull();
-  expect(layout.canvas!.width).toBeGreaterThanOrEqual(899);
-  expect(layout.canvas!.height).toBeGreaterThanOrEqual(505);
+  expect(layout.canvas!.width).toBeCloseTo(390, 0);
+  expect(layout.canvas!.height).toBeCloseTo(219, 0);
   expect(layout.canvas!.width / layout.canvas!.height).toBeCloseTo(16 / 9, 2);
-  expect(layout.scrollWidth).toBeGreaterThan(800);
-  expect(layout.scrollLeft).toBeGreaterThan(200);
+  expect(layout.scrollWidth).toBe(390);
+  expect(layout.scrollLeft).toBe(0);
   expect(layout.documentWidth).toBe(390);
   expect(layout.documentHeight).toBe(844);
   expect(layout.heroes!.top).toBeGreaterThanOrEqual(layout.wave!.bottom);
-  await expect(page.getByRole('button', { name: 'Show battlefield overview' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Focus battlefield for touch play' })).toBeVisible();
+  await page.getByRole('button', { name: 'Focus battlefield for touch play' }).click();
+  await expect.poll(() => page.locator('canvas').evaluate((canvas) => canvas.getBoundingClientRect().width)).toBeCloseTo(900, 0);
+  await expect(page.getByRole('slider', { name: 'Pan across battlefield' })).toBeVisible();
+  await page.getByRole('slider', { name: 'Pan across battlefield' }).fill('0');
+  await expect.poll(() => page.locator('#game-root').evaluate((root) => root.scrollLeft)).toBe(0);
+  await page.getByRole('slider', { name: 'Pan across battlefield' }).fill('1000');
+  await expect.poll(() => page.locator('#game-root').evaluate((root) => root.scrollLeft)).toBeGreaterThan(450);
   await page.getByRole('button', { name: 'Show battlefield overview' }).click();
   await expect.poll(() => page.locator('canvas').evaluate((canvas) => canvas.getBoundingClientRect().width)).toBeCloseTo(390, 0);
-  await expect(page.getByRole('button', { name: 'Focus battlefield for touch play' })).toBeVisible();
   await expect(page.getByRole('button', { name: /CALL WAVE/ })).toBeVisible();
 });
 
@@ -224,8 +230,9 @@ for (const viewport of responsiveViewports) {
       expect(box!.bottom).toBeLessThanOrEqual(viewport.height + 1);
     }
     if (viewport.width <= 620) {
-      expect(layout.canvas!.width).toBeGreaterThanOrEqual(899);
-      expect(layout.canvas!.height).toBeGreaterThanOrEqual(505);
+      expect(layout.canvas!.width).toBeCloseTo(viewport.width, 0);
+      expect(layout.canvas!.left).toBeGreaterThanOrEqual(-1);
+      expect(layout.canvas!.right).toBeLessThanOrEqual(viewport.width + 1);
     } else {
       expect(layout.canvas!.left).toBeGreaterThanOrEqual(-1);
       expect(layout.canvas!.top).toBeGreaterThanOrEqual(-1);
@@ -285,6 +292,7 @@ test('world touch proxies remain at least 44px at constrained landscape and port
     const page = await context.newPage();
     await page.goto('http://127.0.0.1:4173/');
     await page.getByRole('button', { name: /ENTER THE RIFT/ }).click();
+    if (viewport.width <= 620) await page.getByRole('button', { name: 'Focus battlefield for touch play' }).click();
     const diagnostics = await page.evaluate(() => {
       const scene = window.__VERDANT_RIFT_GAME__?.scene.getScene('battle');
       const canvasWidth = document.querySelector('canvas')?.getBoundingClientRect().width ?? 0;
@@ -325,6 +333,7 @@ test('portrait focus pans, preserves touch mapping, recovers overview, and survi
   const page = await context.newPage();
   await page.goto('http://127.0.0.1:4173/');
   await page.getByRole('button', { name: /ENTER THE RIFT/ }).click();
+  await page.getByRole('button', { name: 'Focus battlefield for touch play' }).click();
   await expect.poll(() => page.locator('#game-root').evaluate((root) => root.scrollLeft)).toBeGreaterThan(200);
   await page.getByRole('button', { name: 'Pan battlefield left' }).click();
   await expect.poll(() => page.locator('#game-root').evaluate((root) => root.scrollLeft)).toBe(0);
@@ -375,6 +384,7 @@ test('portrait build and branch panels explicitly pause any canvas overlap and c
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
   await page.getByRole('button', { name: /ENTER THE RIFT/ }).click();
+  await page.getByRole('button', { name: 'Focus battlefield for touch play' }).click();
   await page.getByRole('button', { name: 'Pan battlefield left' }).click();
   await expect.poll(() => page.locator('#game-root').evaluate((root) => root.scrollLeft)).toBe(0);
   await clickWorld(page, FIRST_PAINTED_PAD.x, FIRST_PAINTED_PAD.y);

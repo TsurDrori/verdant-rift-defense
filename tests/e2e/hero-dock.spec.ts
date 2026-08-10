@@ -67,3 +67,24 @@ test('collapsed HP remains colored and tracks injury without duplicate meters', 
   expect(state.fill).toMatch(/rgb\((220|221|222|223|224|225)/);
   await page.screenshot({ path: 'test-results/hero-dock/injured-collapsed-portrait.png' });
 });
+
+test('all four active spells use distinct semantic vector icons', async ({ page }) => {
+  await enterBattle(page);
+  await page.evaluate(() => {
+    const controller = window.__VERDANT_RIFT__!;
+    const heroes = (controller.simulation as unknown as { heroes: Array<{ id: string; level: number; unlockedSpells: string[] }> }).heroes;
+    heroes.find((hero) => hero.id === 'kael')!.level = 4;
+    heroes.find((hero) => hero.id === 'kael')!.unlockedSpells = ['rift-quake', 'riftbrand', 'warden-pulse'];
+    heroes.find((hero) => hero.id === 'lyra')!.level = 4;
+    heroes.find((hero) => hero.id === 'lyra')!.unlockedSpells = ['starfall', 'astral-echo', 'falling-constellation'];
+    controller.update(0);
+  });
+  const icons = new Set<string>();
+  for (const hero of ['Kael', 'Lyra'] as const) {
+    await page.getByRole('button', { name: new RegExp(`Select and expand ${hero}`) }).click();
+    const card = page.locator(`[data-hero-card="${hero.toLowerCase()}"]`);
+    for (const icon of await card.locator('svg[data-icon]').all()) icons.add((await icon.getAttribute('data-icon'))!);
+    await page.screenshot({ path: `test-results/hero-dock/${hero.toLowerCase()}-spell-icons.png` });
+  }
+  expect([...icons].sort()).toEqual(['falling-constellation', 'rift-quake', 'starfall', 'warden-pulse']);
+});
