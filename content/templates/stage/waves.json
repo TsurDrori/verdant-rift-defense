@@ -1,0 +1,4 @@
+{
+  "waves": [{ "label": "First Contact", "intel": "A teaching wave for the new battlefield.", "groups": [{ "enemy": "skitter", "count": 8, "interval": 0.8, "delay": 0, "route": "main" }] }],
+  "tacticalPressure": {}
+}

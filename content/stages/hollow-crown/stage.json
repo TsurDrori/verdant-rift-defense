@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "campaign": {
+    "id": "hollow-crown", "chapter": 1, "order": 5, "name": "The Hollow Crown", "mission": "Sever the Bloom",
+    "description": "At the forest heart, the sovereign wakes. Every covenant and champion will be tested in the final siege.",
+    "objective": "Defeat the chapter sovereign", "threat": "Boss siege", "reward": 6, "waves": 16,
+    "enemies": ["Elite host", "The Hollow Bloom"], "mapPosition": { "x": 86, "y": 25 }, "playable": false, "unlockAfter": "cinder-grove"
+  }
+}

@@ -6,7 +6,7 @@ All shipped bitmap art was created for Verdant Rift with the built-in OpenAI ima
 
 Runtime file: `public/assets/environment/verdant-rift-1600.png`
 
-The 1600×900 runtime image is also the locked background layer in `maps/verdant-rift.tmj`, so painted landmarks and authored gameplay coordinates share one exact pixel coordinate system. See `docs/MAP_AUTHORING.md`.
+The 1600×900 image is the painted visual asset referenced by `content/stages/sunken-way/map.json`. Gameplay coordinates live in that package and can be checked over the image with `?stage=sunken-way&debugMap=1`. See `docs/MAP_AUTHORING.md`.
 
 Production prompt:
 

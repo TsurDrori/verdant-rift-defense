@@ -1,87 +1,65 @@
-# Content scaling readiness
+# Content scaling architecture
 
-## Current verdict
+## Verdict
 
-The project can safely iterate on the existing stage, but it is not yet ready to multiply content at production speed. The largest risk is not art volume; it is that one stage, one wave table, and one simulation are still selected through module-level globals. Adding stages before removing those globals will produce conditionals, duplicated tests, and cross-stage regressions.
+The runtime content boundary is now scalable. A stage is a self-contained, validated package, not a collection of globals wired into UI and simulation code. The second playable stage proves a different wave count, economy, procedural visual recipe, two enemy routes, route-specific spawns, twelve build pads, and different hero deployment without changing the engine.
 
-## Completed foundations
+## Implemented boundary
 
-- Deterministic simulation separated from Phaser presentation.
-- Versioned campaign profile with migration and corrupt-storage fallback.
-- Stable asset keys and deployment-relative asset URLs.
-- Tiled-authored map source with generated typed geometry and stale-build rejection.
-- DOM HUD/menu boundary with keyboard and touch accessibility.
-- Fixed-step stress telemetry, effect cleanup diagnostics, and browser regression coverage.
-- Data-driven towers, enemies, waves, hero spells, artifacts, and progression thresholds.
-
-## Gates before adding many stages
-
-### P0 — Stage/run dependency injection
-
-Replace `ACTIVE_BATTLE_MAP`, global `WAVES`, and `new GameSimulation()` defaults with a validated `RunDefinition` injected by the campaign launch action:
-
-```ts
-interface RunDefinition {
-  stageId: CampaignStageId;
-  map: BattleMapDefinition;
-  waves: readonly WaveDefinition[];
-  economy: EconomyDefinition;
-  objectives: readonly ObjectiveDefinition[];
-  modifiers: readonly StageModifier[];
-}
+```text
+content/stages/<id>/{stage,map,waves}.json
+                    │
+                    ▼
+          compile-content.mjs
+      semantic validation + stale check
+                    │
+                    ▼
+       generated immutable catalog
+                    │
+        campaign selects RunDefinition
+                    │
+      ┌─────────────┼─────────────┐
+      ▼             ▼             ▼
+ GameSimulation  BattleScene     GameUI/Audio
+ PathGeometry    stage bundle    same run data
 ```
 
-The simulation, scene, UI, and audio director must read the same immutable run definition. No subsystem may independently choose a map or wave set.
+The campaign launch selection injects a `RunDefinition`. `GameSimulation` owns a `PathGeometry` instance built from that run. Enemy state carries a route ID; movement, blocker occupancy, boss escorts, hero projection, pad placement, UI, and spatial audio consume the same instance. Runtime stage changes rebuild the deterministic simulation and restart the battle scene cleanly.
 
-### P0 — Instance-owned path geometry
+## Content package coverage
 
-Convert the current module-level route caches into a `PathGeometry` instance created from `RunDefinition.map`. Simulation and renderer receive that same instance. This is required for multi-route stages, alternate exits, route switching, and editor hot reload.
+A package controls:
 
-### P0 — Content schema validation
+- campaign order, map-node position, unlock dependency, prose, reward, and playable status;
+- painted or seeded procedural map presentation;
+- any number of routes, lane widths, entrances, a shared gate, build pads, water bands, and landmarks;
+- wave count, enemy composition, delays, intervals, route assignment, and difficulty-only tactical groups;
+- starting gold/lives, HP/speed scaling, early-call reward, intermission bands;
+- objectives, modifiers, hero routes, and hero spawn progress;
+- stage-scoped image assets.
 
-Validate every stage at build time:
+Shared catalogs still correctly own reusable content—enemy archetypes, tower families, heroes, spells, artifacts, VFX rigs, and soundtrack compositions. A map package references those stable IDs rather than duplicating their mechanics.
 
-- stable unique IDs;
-- route and pad bounds;
-- contiguous wave timing;
-- referenced enemy/tower/asset IDs exist;
-- spawn and exit markers exist;
-- no unreachable route branch;
-- localization keys exist;
-- budget and difficulty telemetry stay within declared ranges.
+## Safety and performance
 
-The map generator now demonstrates this pattern; waves and stage definitions need the same treatment.
+- Production builds fail on stale generated content.
+- Stage images load only for the active run; future painted maps do not inflate first-load memory.
+- The 1600×900 simulation world is invariant while Phaser/CSS scale it responsively.
+- Procedural rendering is deterministic from `seed`; screenshots are reproducible.
+- Per-route geometry caches are instance-owned and immutable.
+- The 300-unit per-wave authoring ceiling guards accidental browser-killing data.
+- Planned campaign nodes need only `stage.json`; playable nodes must provide a complete package.
 
-### P1 — Split the simulation by domain
+## What scales without engine edits
 
-`GameSimulation` is still a large integration unit. Keep one deterministic clock and snapshot, but move rules into explicit systems: `WaveSystem`, `MovementSystem`, `TargetingSystem`, `CombatSystem`, `HeroSystem`, `TowerSystem`, `StatusSystem`, and `EconomySystem`. Systems should consume typed commands and emit typed events; Phaser must remain presentation-only.
+New campaign maps, alternate layouts, multi-route missions, wave scripts, economy curves, objectives already represented by the objective union, procedural palettes, landmarks, painted backdrops, and stage metadata require data changes only.
 
-### P1 — Stage-scoped asset bundles
+Engine work is still appropriate when adding genuinely new rule vocabulary—a new objective type, route branching during a run, a new enemy mechanic, a new reusable landmark renderer, localization, or streaming audio per biome. Those are engine capabilities, not failures of the package system. They should extend the typed contract once and then become reusable content primitives.
 
-Boot currently loads the complete manifest. Add bundles such as `core-ui`, `stage:<id>`, `hero:<id>`, and `tower:<id>`, with reference-counted disposal between stages. This keeps mobile memory and first-load time bounded as content grows.
+## Proof packages
 
-### P1 — Wave and balance authoring
+- `sunken-way`: 12-wave painted campaign map migrated from the original vertical slice.
+- `rootbound-crossing`: 10-wave procedural map with north/south routes converging on one gate and route-specific pressure.
+- `glasswood`, `cinder-grove`, `hollow-crown`: planned catalog entries proving that campaign structure can exist before battle content is marked playable.
 
-Move waves to a validated JSON/CSV authoring format with a batch simulator. Every stage commit should report completion rate, leak distribution, gold curve, tower pick rate, hero XP distribution, and worst fixed-step/render load across deterministic seeds.
-
-### P1 — Visual regression matrix
-
-Keep screenshot gates for overview, tactical focus, boss, tower panel, expanded hero bar, each spell icon/VFX, and debug map overlay at desktop, shallow landscape, and portrait. Add baseline diff thresholds in CI once the current art direction stabilizes.
-
-### P2 — Localization and narrative data
-
-Replace display text embedded in UI templates with localization keys before adding large codex, stage, hero, and artifact catalogs. Content IDs remain stable; prose can then change without save migrations.
-
-### P2 — Procedural modes
-
-Only after `RunDefinition` and instance-owned geometry exist should procedural route generation be considered. Use it for endless/challenge modes, validate route clearance and pad coverage, and render it with a dedicated modular terrain kit. Do not use it to replace authored campaign maps.
-
-## Recommended order
-
-1. Run definition injection and instance-owned geometry.
-2. Second stage as the proof case—not ten stages.
-3. Stage-scoped asset loading.
-4. Wave authoring plus batch balance telemetry.
-5. Split simulation systems where the second stage exposes real variation pressure.
-6. Localization and visual-regression baselines.
-7. Procedural challenge mode, if still valuable.
+See `docs/MAP_AUTHORING.md` for the exact agent workflow.

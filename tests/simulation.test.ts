@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { TOWERS } from '../src/game/content/towers';
 import { COMBAT_BALANCE } from '../src/game/content/combatBalance';
 import { ENEMIES } from '../src/game/content/enemies';
-import { WAVES } from '../src/game/content/waves';
+import { RUN_DEFINITIONS } from '../src/game/content/generated/stages';
 import { GameSimulation } from '../src/game/simulation/GameSimulation';
 import { distance, PATH_LENGTH, pointInPathLane, projectPointToPath } from '../src/game/simulation/geometry';
 import type { GameEvent } from '../src/game/simulation/state';
@@ -14,13 +14,16 @@ function advance(simulation: GameSimulation, seconds: number): void {
 
 describe('content integrity', () => {
   it('keeps every wave group bound to a valid enemy', () => {
-    expect(WAVES).toHaveLength(12);
-    for (const wave of WAVES) {
-      expect(wave.groups.length).toBeGreaterThan(0);
-      for (const group of wave.groups) {
-        expect(ENEMIES[group.enemy]).toBeDefined();
-        expect(group.count).toBeGreaterThan(0);
-        expect(group.interval).toBeGreaterThanOrEqual(0);
+    for (const run of Object.values(RUN_DEFINITIONS)) {
+      expect(run.waves.length).toBeGreaterThan(0);
+      for (const wave of run.waves) {
+        expect(wave.groups.length).toBeGreaterThan(0);
+        for (const group of wave.groups) {
+          expect(ENEMIES[group.enemy]).toBeDefined();
+          expect(run.map.routes.some((route) => route.id === (group.route ?? run.map.primaryRouteId))).toBe(true);
+          expect(group.count).toBeGreaterThan(0);
+          expect(group.interval).toBeGreaterThanOrEqual(0);
+        }
       }
     }
   });

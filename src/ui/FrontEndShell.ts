@@ -25,6 +25,7 @@ export interface FrontEndRenderState {
   reducedMotion: boolean;
   runtimeReady: boolean;
   audioMixer: string;
+  previewStageId?: CampaignStageDefinition['id'];
 }
 
 const routes: readonly { id: FrontEndRoute; glyph: string; label: string; hint: string }[] = [
@@ -79,7 +80,7 @@ export function renderFrontEndContent(state: FrontEndRenderState): string {
 
 function renderCampaign(state: FrontEndRenderState): string {
   const selected = stageById(state.profile.selectedStageId);
-  const status = stageStatus(selected, state.profile);
+  const status = state.previewStageId === selected.id ? 'available' : stageStatus(selected, state.profile);
   const result = state.profile.stages[selected.id];
   const playable = status === 'available' || status === 'cleared';
   return `
@@ -94,7 +95,7 @@ function renderCampaign(state: FrontEndRenderState): string {
           <svg class="campaign-route" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path d="M17 70 C25 66 27 56 35 53 S46 62 53 68 S63 61 70 45 S80 34 86 25"/><path class="route-glow" d="M17 70 C25 66 27 56 35 53 S46 62 53 68 S63 61 70 45 S80 34 86 25"/></svg>
           <div class="map-chapter-label"><small>THE OLD KINGDOM ROAD</small><b>Five stands to the forest heart</b></div>
           ${CAMPAIGN_STAGES.map((stage) => {
-            const stageState = stageStatus(stage, state.profile);
+            const stageState = state.previewStageId === stage.id ? 'available' : stageStatus(stage, state.profile);
             const stars = state.profile.stages[stage.id]?.stars ?? 0;
             return `<button class="stage-node is-${stageState} ${selected.id === stage.id ? 'is-selected' : ''}" style="--stage-x:${stage.mapPosition.x}%;--stage-y:${stage.mapPosition.y}%" data-action="menu-stage" data-stage="${stage.id}" aria-label="Stage ${stage.order}: ${stage.name}, ${stageState}">
               <span class="stage-node-ring"><i>${stageState === 'locked' || stageState === 'planned' ? '◆' : stage.order}</i></span>

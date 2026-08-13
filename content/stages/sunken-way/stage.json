@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "campaign": {
+    "id": "sunken-way",
+    "chapter": 1,
+    "order": 1,
+    "name": "The Sunken Way",
+    "mission": "Hold the Verdant Rift",
+    "description": "The Hollow Bloom has poisoned the old crossing. Bind rival covenants to the stone circles and keep the golden gate alive.",
+    "objective": "Defend the gate through 12 escalating waves",
+    "threat": "Balanced assault",
+    "reward": 3,
+    "waves": 12,
+    "enemies": ["Marauders", "Wisps", "Brutes"],
+    "mapPosition": { "x": 17, "y": 70 },
+    "playable": true
+  },
+  "run": {
+    "economy": {
+      "difficulties": {
+        "wanderer": { "startingGold": 360, "startingLives": 25, "enemyHp": 0.84, "enemySpeed": 0.94 },
+        "warden": { "startingGold": 310, "startingLives": 20, "enemyHp": 1, "enemySpeed": 1 },
+        "mythic": { "startingGold": 270, "startingLives": 15, "enemyHp": 1.18, "enemySpeed": 1.08 }
+      },
+      "earlyCall": { "goldPerSecond": 2.2, "maximumBonus": 45, "heroCooldownRefund": 2.5 },
+      "intermissions": [
+        { "throughWave": 3, "seconds": 18 },
+        { "throughWave": 7, "seconds": 22 },
+        { "throughWave": 12, "seconds": 26 }
+      ]
+    },
+    "objectives": [{ "type": "protect-gate" }, { "type": "survive-waves", "count": 12 }],
+    "modifiers": [],
+    "heroSpawns": {
+      "kael": { "routeId": "main", "progress": 0.45 },
+      "lyra": { "routeId": "main", "progress": 0.68 }
+    }
+  }
+}

@@ -1,11 +1,10 @@
 import { TOWERS } from '../game/content/towers';
 import { HERO_ARTIFACTS, HERO_LEVEL_THRESHOLDS, HERO_MILESTONE_NAMES, heroArtifactsForHero, heroSpellSpec, heroSpellsForHero, heroXpProgress } from '../game/content/heroProgression';
 import type { HeroActiveSpellId, HeroArtifactId, HeroId, TowerBranch, TowerId } from '../game/content/types';
-import { WAVES } from '../game/content/waves';
 import type { GameEvent, HeroState, TowerState } from '../game/simulation/state';
-import { BUILD_PADS } from '../game/simulation/geometry';
 import { assetUrl } from '../game/assets/url';
 import { CampaignProfileStore } from '../game/campaign/CampaignProfile';
+import { RUN_DEFINITIONS } from '../game/content/generated/stages';
 import { heroById, stageById, type CampaignStageId, type InsightUpgradeId, type MenuHeroId } from '../game/campaign/content';
 import type { DifficultyId } from '../game/simulation/state';
 import { GameController } from '../phaser/adapters/GameController';
@@ -96,10 +95,15 @@ export class GameUI {
   private activeModal: HTMLElement | null = null;
   private focusBeforeModal: HTMLElement | null = null;
   private expandedHero: HeroId | null = null;
+  private previewStageId: CampaignStageId | undefined = (() => {
+    const requested = new URLSearchParams(window.location.search).get('stage') as CampaignStageId | null;
+    return requested && RUN_DEFINITIONS[requested] ? requested : undefined;
+  })();
 
   constructor(root: HTMLElement, controller: GameController) {
     this.root = root;
     this.controller = controller;
+    this.syncSelectedRun();
     this.controller.setInsightLoadout(this.campaign.snapshot().insightLoadout);
     this.controller.setHeroArtifactLoadout(this.artifactLoadout);
     this.root.innerHTML = this.shell();
@@ -117,7 +121,9 @@ export class GameUI {
     controller.addEventListener('spell-target-preview', ((event: CustomEvent<SpellTargetPreview>) => this.syncCastReticle(event.detail)) as EventListener);
     controller.addEventListener('spell-target-invalid', () => this.rejectCastReticle());
     this.campaign.addEventListener('change', () => {
+      this.syncSelectedRun();
       this.controller.setInsightLoadout(this.campaign.snapshot().insightLoadout);
+      this.controller.setHeroArtifactLoadout(this.artifactLoadout);
       this.renderFrontEnd();
     });
     this.render();
@@ -127,10 +133,10 @@ export class GameUI {
     return `
       <div class="hud" aria-live="polite">
         <section class="resource-ribbon panel" aria-label="Battle status">
-          <div class="brand-mark"><span class="brand-rune">V</span><span><b>VERDANT RIFT</b><small>THE SUNKEN WAY</small></span></div>
+          <div class="brand-mark"><span class="brand-rune">V</span><span><b>VERDANT RIFT</b><small data-stage-title>${this.controller.run.map.title.toUpperCase()}</small></span></div>
           <div class="resource"><span class="resource-icon gold">◆</span><span><b data-gold>310</b><small>sunshards</small></span></div>
           <div class="resource"><span class="resource-icon lives">♥</span><span><b data-lives>20</b><small>gate</small></span></div>
-          <div class="resource wave-resource"><span class="resource-icon wave">≋</span><span><b data-wave>0 / 12</b><small>wave</small></span></div>
+          <div class="resource wave-resource"><span class="resource-icon wave">≋</span><span><b data-wave>0 / ${this.controller.run.waves.length}</b><small>wave</small></span></div>
         </section>
 
         <nav class="battle-controls panel" aria-label="Battle controls">
@@ -194,6 +200,7 @@ export class GameUI {
       }
       else if (action === 'menu-stage') {
         const stage = stageById(button.dataset.stage as CampaignStageId);
+        this.previewStageId = undefined;
         this.campaign.selectStage(stage.id);
         this.root.querySelector<HTMLElement>(`[data-stage="${stage.id}"]`)?.focus({ preventScroll: true });
       }
@@ -203,7 +210,7 @@ export class GameUI {
         this.root.querySelector<HTMLElement>(`[data-menu-hero="${this.selectedMenuHero}"]`)?.focus({ preventScroll: true });
       }
       else if (action === 'begin') {
-        const stage = stageById(this.campaign.snapshot().selectedStageId);
+        const stage = stageById(this.previewStageId ?? this.campaign.snapshot().selectedStageId);
         if (!stage.playable || !this.controller.isRuntimeReady()) return;
         this.controller.begin();
         this.root.querySelector('[data-briefing]')?.classList.remove('is-open');
@@ -351,13 +358,19 @@ export class GameUI {
   private bindCastPointerBoundary(): void {
     const gameRoot = document.querySelector<HTMLElement>('#game-root');
     if (!gameRoot) return;
+    // Phaser caches the canvas client rect. Portrait focus deliberately
+    // changes that rect with CSS, so refresh in capture phase on every world
+    // press before Phaser converts client coordinates into world coordinates.
+    // This removes the last timing dependency between reflow and a fast tap.
+    gameRoot.addEventListener('pointerdown', () => this.refreshWorldInputBounds(), true);
     const worldPoint = (event: PointerEvent): { x: number; y: number } | undefined => {
       const canvas = gameRoot.querySelector<HTMLCanvasElement>('canvas');
       const bounds = canvas?.getBoundingClientRect();
       if (!bounds || bounds.width <= 0 || bounds.height <= 0) return undefined;
+      const world = this.controller.run.map.world;
       return {
-        x: Math.max(0, Math.min(1600, ((event.clientX - bounds.left) / bounds.width) * 1600)),
-        y: Math.max(0, Math.min(900, ((event.clientY - bounds.top) / bounds.height) * 900)),
+        x: Math.max(0, Math.min(world.width, ((event.clientX - bounds.left) / bounds.width) * world.width)),
+        y: Math.max(0, Math.min(world.height, ((event.clientY - bounds.top) / bounds.height) * world.height)),
       };
     };
     gameRoot.addEventListener('pointermove', (event) => {
@@ -441,7 +454,7 @@ export class GameUI {
     requestAnimationFrame(() => reticle.classList.add('is-rejected'));
   }
 
-  private applyViewMode(smooth: boolean): void {
+  private applyViewMode(_smooth: boolean): void {
     const focused = this.portraitLayout && this.viewMode === 'focus';
     document.documentElement.classList.toggle('portrait-focus', focused);
     const controls = this.root.querySelector<HTMLElement>('[data-view-controls]');
@@ -451,17 +464,19 @@ export class GameUI {
     const toggle = this.root.querySelector<HTMLElement>('[data-action="view-mode"]');
     toggle?.setAttribute('aria-label', this.viewMode === 'focus' ? 'Show battlefield overview' : 'Focus battlefield for touch play');
     if (focused) {
-      if (smooth) requestAnimationFrame(() => requestAnimationFrame(() => this.centerFocusedWorld(this.focusWorldX, true)));
-      else this.centerFocusedWorld(this.focusWorldX, false);
+      // Class/style updates are synchronous. Center immediately so a fast
+      // follow-up pan cannot be overwritten by a deferred centering callback.
+      this.centerFocusedWorld(this.focusWorldX, false);
     }
     else document.querySelector<HTMLElement>('#game-root')?.scrollTo({ left: 0, behavior: 'auto' });
+    this.refreshWorldInputBounds();
     this.syncPanScrubber();
   }
 
   private setViewMode(mode: 'focus' | 'overview', worldX = this.focusWorldX): void {
     if (this.viewMode === 'focus') this.captureFocusedWorld();
     this.viewMode = mode;
-    this.focusWorldX = Math.max(0, Math.min(1600, worldX));
+    this.focusWorldX = Math.max(0, Math.min(this.controller.run.map.world.width, worldX));
     this.applyViewMode(true);
   }
 
@@ -474,10 +489,15 @@ export class GameUI {
     // so a follow-up tap cannot race a still-moving canvas and command the
     // wrong world coordinate; ornamental easing is reserved for mode changes.
     const target = root.scrollLeft + direction * Math.max(220, root.clientWidth * 0.68);
+    const maximum = Math.max(0, root.scrollWidth - root.clientWidth);
+    const clamped = Math.max(0, Math.min(maximum, target));
+    const edgeSnap = Math.max(44, root.clientWidth * 0.25);
+    const snapped = clamped < edgeSnap ? 0 : maximum - clamped < edgeSnap ? maximum : clamped;
     const inlineScrollBehavior = root.style.scrollBehavior;
     root.style.scrollBehavior = 'auto';
-    root.scrollLeft = Math.max(0, Math.min(root.scrollWidth - root.clientWidth, target));
+    root.scrollLeft = snapped;
     root.style.scrollBehavior = inlineScrollBehavior;
+    this.refreshWorldInputBounds();
     this.captureFocusedWorld();
   }
 
@@ -486,7 +506,8 @@ export class GameUI {
     const root = document.querySelector<HTMLElement>('#game-root');
     const canvas = root?.querySelector<HTMLCanvasElement>('canvas');
     if (!root || !canvas || canvas.offsetWidth === 0) return;
-    this.focusWorldX = Math.max(0, Math.min(1600, ((root.scrollLeft + root.clientWidth / 2 - canvas.offsetLeft) / canvas.offsetWidth) * 1600));
+    const worldWidth = this.controller.run.map.world.width;
+    this.focusWorldX = Math.max(0, Math.min(worldWidth, ((root.scrollLeft + root.clientWidth / 2 - canvas.offsetLeft) / canvas.offsetWidth) * worldWidth));
     this.syncPanScrubber();
   }
 
@@ -494,9 +515,14 @@ export class GameUI {
     const root = document.querySelector<HTMLElement>('#game-root');
     const canvas = root?.querySelector<HTMLCanvasElement>('canvas');
     if (!root || !canvas) return;
-    const left = canvas.offsetLeft + canvas.offsetWidth * (worldX / 1600) - root.clientWidth / 2;
+    const left = canvas.offsetLeft + canvas.offsetWidth * (worldX / this.controller.run.map.world.width) - root.clientWidth / 2;
     root.scrollTo({ left: Math.max(0, Math.min(root.scrollWidth - root.clientWidth, left)), behavior: smooth && !this.reducedMotion ? 'smooth' : 'auto' });
-    requestAnimationFrame(() => this.syncPanScrubber());
+    this.refreshWorldInputBounds();
+    requestAnimationFrame(() => { this.refreshWorldInputBounds(); this.syncPanScrubber(); });
+  }
+
+  private refreshWorldInputBounds(): void {
+    window.__VERDANT_RIFT_GAME__?.scale.updateBounds();
   }
 
   private syncPanScrubber(): void {
@@ -630,9 +656,11 @@ export class GameUI {
   }
 
   private frontEndState(): FrontEndRenderState {
+    const storedProfile = this.campaign.snapshot();
+    const profile = this.previewStageId ? { ...storedProfile, selectedStageId: this.previewStageId } : storedProfile;
     return {
       route: this.frontEndRoute,
-      profile: this.campaign.snapshot(),
+      profile,
       selectedHeroId: this.selectedMenuHero,
       difficulty: this.controller.snapshot().difficulty,
       muted: this.muted,
@@ -640,7 +668,23 @@ export class GameUI {
       reducedMotion: this.reducedMotion,
       runtimeReady: this.controller.isRuntimeReady(),
       audioMixer: this.audioMixerMarkup(),
+      previewStageId: this.previewStageId,
     };
+  }
+
+  private syncSelectedRun(): void {
+    const stageId = this.previewStageId ?? this.campaign.snapshot().selectedStageId;
+    const run = RUN_DEFINITIONS[stageId];
+    if (!run || run.stageId === this.controller.run.stageId) return;
+    const difficulty = this.controller.snapshot().difficulty;
+    if (this.controller.configureRun(run)) {
+      this.controller.setDifficulty(difficulty);
+      this.focusWorldX = run.map.world.width / 2;
+      this.setText('[data-stage-title]', run.map.title.toUpperCase());
+      this.lastWaveCard = '';
+      this.lastSelection = '';
+      this.lastHeroDock = '';
+    }
   }
 
   private renderFrontEnd(): void {
@@ -752,7 +796,7 @@ export class GameUI {
     const target = this.root.querySelector<HTMLElement>('[data-wave-card]');
     if (!target) return;
     const snapshot = this.controller.snapshot();
-    const next = WAVES[snapshot.wave];
+    const next = this.controller.nextWave();
     const alive = snapshot.enemies.filter((enemy) => enemy.alive).length;
     const hidden = !next || snapshot.phase === 'victory' || snapshot.phase === 'defeat';
     const mode = hidden ? 'hidden' : snapshot.waveActive && !snapshot.canCallWave ? 'live' : 'callable';
@@ -777,7 +821,8 @@ export class GameUI {
       this.setText('[data-wave-live-title]', `WAVE ${snapshot.wave} IN MOTION`);
       this.setText('[data-wave-alive]', `${alive} ${alive === 1 ? 'foe' : 'foes'} on the road`);
     } else if (next) {
-      const bonus = snapshot.wave === 0 ? 0 : Math.min(45, Math.floor(snapshot.intermission * 2.2));
+      const earlyCall = this.controller.run.economy.earlyCall;
+      const bonus = snapshot.wave === 0 ? 0 : Math.min(earlyCall.maximumBonus, Math.floor(snapshot.intermission * earlyCall.goldPerSecond));
       this.setText('[data-wave-next]', `NEXT • WAVE ${snapshot.wave + 1}`);
       this.setText('[data-wave-label]', next.label);
       this.setText('[data-wave-intel]', next.intel);
@@ -905,7 +950,7 @@ export class GameUI {
     document.documentElement.classList.add('context-panel-open');
     if (selection.kind === 'pad') {
       this.pauseForContextPanel();
-      if (this.portraitLayout && this.viewMode === 'focus') this.centerFocusedWorld(BUILD_PADS[selection.padIndex]!.x, true);
+      if (this.portraitLayout && this.viewMode === 'focus') this.centerFocusedWorld(this.controller.simulation.geometry.buildPads[selection.padIndex]!.x, true);
       panel.dataset.side = selection.padIndex >= 2 && selection.padIndex <= 7 ? 'left' : 'right';
       panel.innerHTML = `${this.contextPauseMarkup()}<header><div><small>FOUNDATION ${selection.padIndex + 1}</small><h3>Choose a covenant</h3></div><button data-action="close" class="close-button" aria-label="Close tower controls and resume battle">×</button></header>
         <div class="tower-grid">${(Object.keys(TOWERS) as TowerId[]).map((id) => {
@@ -923,7 +968,7 @@ export class GameUI {
     if (!tower) { panel.classList.remove('is-visible'); panel.innerHTML = ''; delete panel.dataset.towerUid; document.documentElement.classList.remove('context-panel-open'); this.syncPanelScrollAffordance(); return; }
     panel.dataset.towerUid = String(tower.uid);
     this.pauseForContextPanel();
-    if (this.portraitLayout && this.viewMode === 'focus') this.centerFocusedWorld(BUILD_PADS[tower.padIndex]!.x, true);
+    if (this.portraitLayout && this.viewMode === 'focus') this.centerFocusedWorld(this.controller.simulation.geometry.buildPads[tower.padIndex]!.x, true);
     panel.dataset.side = tower.padIndex >= 2 && tower.padIndex <= 7 ? 'left' : 'right';
     const definition = TOWERS[tower.type];
     const next = tower.level < 3 ? definition.upgrades[tower.level - 1] : undefined;
@@ -995,7 +1040,7 @@ export class GameUI {
     const stars = starRating(victory, snapshot.lives, snapshot.startingLives);
     if (victory) {
       const filledStars = stars.split('').filter((star) => star === '★').length as 1 | 2 | 3;
-      const clear = this.campaign.recordStageClear('sunken-way', filledStars, snapshot.score, snapshot.difficulty);
+      const clear = this.campaign.recordStageClear(this.controller.run.stageId as CampaignStageId, filledStars, snapshot.score, snapshot.difficulty);
       insight = clear.firstClear
         ? `<div class="insight-reward">✦ FIRST CLEAR • +${clear.insightAwarded} INSIGHT <small>Spend it in the Insight Grove before your next deployment.</small></div>`
         : '<div class="insight-reward muted">REPLAY CLEAR • BEST RESULTS PRESERVED</div>';

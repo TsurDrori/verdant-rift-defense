@@ -1,0 +1,20 @@
+{
+  "waves": [
+    { "label": "Forked Trail", "intel": "Skitter scouts probe both approaches.", "groups": [{ "enemy": "skitter", "count": 7, "interval": 0.75, "delay": 0, "route": "north" }, { "enemy": "skitter", "count": 7, "interval": 0.75, "delay": 2.2, "route": "south" }] },
+    { "label": "Briar Discipline", "intel": "Marauders pressure the north while skitters race south.", "groups": [{ "enemy": "marauder", "count": 7, "interval": 1.05, "delay": 0, "route": "north" }, { "enemy": "skitter", "count": 12, "interval": 0.48, "delay": 1.5, "route": "south" }] },
+    { "label": "Crosswind", "intel": "Wisps ignore the split and test total anti-air coverage.", "groups": [{ "enemy": "wisp", "count": 8, "interval": 0.7, "delay": 0, "route": "south" }, { "enemy": "skitter", "count": 10, "interval": 0.52, "delay": 2, "route": "north" }] },
+    { "label": "Twin Hammers", "intel": "A brute anchors each road.", "groups": [{ "enemy": "brute", "count": 2, "interval": 2.4, "delay": 0, "route": "north" }, { "enemy": "brute", "count": 2, "interval": 2.4, "delay": 1.2, "route": "south" }, { "enemy": "marauder", "count": 8, "interval": 0.72, "delay": 2.2, "route": "north" }] },
+    { "label": "Wardstone Spiral", "intel": "Alternating packs converge at the wardstone.", "groups": [{ "enemy": "skitter", "count": 18, "interval": 0.34, "delay": 0, "route": "north" }, { "enemy": "marauder", "count": 10, "interval": 0.67, "delay": 1.1, "route": "south" }, { "enemy": "wisp", "count": 8, "interval": 0.62, "delay": 3, "route": "north" }] },
+    { "label": "Rootbound Column", "intel": "Armor on the south conceals a northern rush.", "groups": [{ "enemy": "brute", "count": 4, "interval": 1.75, "delay": 0, "route": "south" }, { "enemy": "skitter", "count": 22, "interval": 0.3, "delay": 1, "route": "north" }] },
+    { "label": "Canopy Divide", "intel": "Air and ground pressure arrive on opposite routes.", "groups": [{ "enemy": "wisp", "count": 16, "interval": 0.47, "delay": 0, "route": "north" }, { "enemy": "marauder", "count": 14, "interval": 0.6, "delay": 1.4, "route": "south" }] },
+    { "label": "Briar Flood", "intel": "Both approaches saturate before the merge.", "groups": [{ "enemy": "skitter", "count": 24, "interval": 0.25, "delay": 0, "route": "north" }, { "enemy": "skitter", "count": 24, "interval": 0.25, "delay": 0.8, "route": "south" }, { "enemy": "brute", "count": 5, "interval": 1.55, "delay": 2, "route": "south" }] },
+    { "label": "The Knotted Host", "intel": "Mixed formations punish isolated defenses.", "groups": [{ "enemy": "marauder", "count": 15, "interval": 0.54, "delay": 0, "route": "north" }, { "enemy": "wisp", "count": 15, "interval": 0.48, "delay": 1.2, "route": "south" }, { "enemy": "brute", "count": 7, "interval": 1.45, "delay": 2.8, "route": "north" }] },
+    { "label": "Briarheart Vanguard", "intel": "The complete host commits to both roads.", "groups": [{ "enemy": "brute", "count": 7, "interval": 1.25, "delay": 0, "route": "south" }, { "enemy": "marauder", "count": 18, "interval": 0.48, "delay": 0.8, "route": "north" }, { "enemy": "wisp", "count": 18, "interval": 0.42, "delay": 2.3, "route": "south" }, { "enemy": "skitter", "count": 28, "interval": 0.23, "delay": 3.8, "route": "north" }] }
+  ],
+  "tacticalPressure": {
+    "6": [{ "enemy": "marauder", "count": 6, "interval": 0.55, "delay": 4, "route": "north" }],
+    "8": [{ "enemy": "wisp", "count": 7, "interval": 0.45, "delay": 4.5, "route": "south" }],
+    "9": [{ "enemy": "skitter", "count": 12, "interval": 0.24, "delay": 5, "route": "south" }],
+    "10": [{ "enemy": "brute", "count": 3, "interval": 1.1, "delay": 5.5, "route": "north" }]
+  }
+}

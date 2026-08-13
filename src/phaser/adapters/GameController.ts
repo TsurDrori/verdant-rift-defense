@@ -2,7 +2,8 @@ import { ENEMIES } from '../../game/content/enemies';
 import { HERO_PRIMARY_SPELL, heroSpellSpec } from '../../game/content/heroProgression';
 import { TOWERS } from '../../game/content/towers';
 import type { HeroActiveSpellId, HeroArtifactId, HeroId, TowerBranch, TowerId } from '../../game/content/types';
-import { WAVES } from '../../game/content/waves';
+import { RUN_DEFINITIONS } from '../../game/content/generated/stages';
+import type { RunDefinition } from '../../game/content/stages/types';
 import { GameSimulation } from '../../game/simulation/GameSimulation';
 import type { Vec2 } from '../../game/simulation/geometry';
 import type { GameEvent, GameSnapshot, TowerState } from '../../game/simulation/state';
@@ -28,13 +29,41 @@ export interface SpellTargetPreview extends ArmedHeroSpell {
 }
 
 export class GameController extends EventTarget {
-  readonly simulation = new GameSimulation();
+  simulation: GameSimulation;
+  run: RunDefinition;
   selection: Selection = { kind: 'none' };
   armedSpell?: ArmedHeroSpell;
   spellTargetPreview?: SpellTargetPreview;
   private pendingPresentationLethals = 0;
   private deferredPresentationEvents: GameEvent[] = [];
   private runtimeReady = false;
+
+  constructor(run: RunDefinition = RUN_DEFINITIONS['sunken-way']!) {
+    super();
+    this.run = run;
+    this.simulation = new GameSimulation(run);
+  }
+
+  configureStage(stageId: string): boolean {
+    const run = RUN_DEFINITIONS[stageId];
+    return Boolean(run && this.configureRun(run));
+  }
+
+  configureRun(run: RunDefinition): boolean {
+    if (this.simulation.getSnapshot().phase !== 'briefing') return false;
+    if (this.run.stageId === run.stageId) return true;
+    this.run = run;
+    this.simulation = new GameSimulation(run);
+    this.selection = { kind: 'none' };
+    this.armedSpell = undefined;
+    this.spellTargetPreview = undefined;
+    this.pendingPresentationLethals = 0;
+    this.deferredPresentationEvents = [];
+    this.runtimeReady = false;
+    this.dispatchEvent(new CustomEvent<RunDefinition>('run-change', { detail: run }));
+    this.changed();
+    return true;
+  }
 
   begin(): void { if (!this.runtimeReady) return; this.simulation.begin(); this.changed(); }
   isRuntimeReady(): boolean { return this.runtimeReady; }
@@ -82,7 +111,7 @@ export class GameController extends EventTarget {
   }
   towerDefinition(id: TowerId) { return TOWERS[id]; }
   enemyDefinition(id: keyof typeof ENEMIES) { return ENEMIES[id]; }
-  nextWave() { return WAVES[this.snapshot().wave]; }
+  nextWave() { return this.run.waves[this.snapshot().wave]; }
 
   /** Compatibility surface for view code and diagnostics written before heroes had multiple spells. */
   get armedAbility(): HeroId | undefined { return this.armedSpell?.heroId; }
@@ -245,7 +274,8 @@ export class GameController extends EventTarget {
 
   selectAdjacentPad(direction: -1 | 1): void {
     const current = this.selection.kind === 'pad' ? this.selection.padIndex : this.selection.kind === 'tower' ? (this.selectedTower()?.padIndex ?? -1) : -1;
-    this.selectPad((current + direction + 11) % 11);
+    const count = this.simulation.geometry.buildPads.length;
+    this.selectPad((current + direction + count) % count);
   }
 
   nudgeSelectedHero(dx: number, dy: number): void {

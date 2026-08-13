@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "campaign": {
+    "id": "cinder-grove", "chapter": 1, "order": 4, "name": "Cinder Grove", "mission": "Quench the Ember March",
+    "description": "Armored warbands advance beneath a rain of ash. The route rewards armor breaking and deliberate stalling.",
+    "objective": "Shatter the armored vanguard", "threat": "Heavy armor", "reward": 4, "waves": 15,
+    "enemies": ["Brutes", "Cinder knights"], "mapPosition": { "x": 70, "y": 45 }, "playable": false, "unlockAfter": "glasswood"
+  }
+}

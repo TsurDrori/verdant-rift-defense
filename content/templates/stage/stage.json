@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "campaign": {
+    "id": "__STAGE_ID__", "chapter": 1, "order": 99, "name": "New Stand", "mission": "Name the mission",
+    "description": "Describe the battlefield fantasy and strategic pressure.", "objective": "Survive the assault", "threat": "Unrated",
+    "reward": 3, "waves": 1, "enemies": ["Skitter packs"], "mapPosition": { "x": 50, "y": 50 }, "playable": true
+  },
+  "run": {
+    "economy": {
+      "difficulties": {
+        "wanderer": { "startingGold": 360, "startingLives": 25, "enemyHp": 0.84, "enemySpeed": 0.94 },
+        "warden": { "startingGold": 310, "startingLives": 20, "enemyHp": 1, "enemySpeed": 1 },
+        "mythic": { "startingGold": 270, "startingLives": 15, "enemyHp": 1.18, "enemySpeed": 1.08 }
+      },
+      "earlyCall": { "goldPerSecond": 2.2, "maximumBonus": 45, "heroCooldownRefund": 2.5 },
+      "intermissions": [{ "throughWave": 99, "seconds": 20 }]
+    },
+    "objectives": [{ "type": "protect-gate" }], "modifiers": [],
+    "heroSpawns": { "kael": { "routeId": "main", "progress": 0.5 }, "lyra": { "routeId": "main", "progress": 0.65 } }
+  }
+}

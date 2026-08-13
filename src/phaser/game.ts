@@ -22,7 +22,7 @@ export function createGame(parent: string, controller: GameController): Phaser.G
     // stop precisely when a burst makes rendering expensive; the simulation's
     // own bounded fixed-step catch-up is the correct place to absorb that load.
     fps: { target: 60, min: 10, smoothStep: false },
-    scene: [BootScene, new BattleScene(controller)],
+    scene: [new BootScene(controller), new BattleScene(controller)],
     input: { activePointers: 3 },
     banner: false,
   });

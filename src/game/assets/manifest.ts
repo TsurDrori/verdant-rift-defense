@@ -50,7 +50,6 @@ export const SPRITESHEETS = {
 } as const;
 
 export const ASSET_PATHS = {
-  [ASSETS.environment.verdantRift]: assetUrl('assets/environment/verdant-rift-1600.png'),
   [ASSETS.vfx.riftQuakeFracture]: assetUrl('assets/vfx/rift-quake-fracture-v1.png'),
   [ASSETS.vfx.starfallShards]: assetUrl('assets/vfx/starfall-shards-v1.png'),
 } as const;

@@ -1,7 +1,6 @@
 import type { GameEvent, GameSnapshot } from '../simulation/state';
 import type { EnemyId } from '../content/types';
 import type { GameController } from '../../phaser/adapters/GameController';
-import { BUILD_PADS } from '../simulation/geometry';
 import { assetUrl } from '../assets/url';
 import {
   advanceScoreModeGate,
@@ -727,10 +726,10 @@ export class AudioDirector {
       this.deferAudio(() => this.playSample('confirm', pan, .32, 1.08), .08);
     } else if (event.type === 'tower-built') {
       const tower = this.snapshot.towers.find((candidate) => candidate.uid === event.towerUid);
-      this.buildSound(tower?.type ?? 'thorn', this.worldPan(BUILD_PADS[event.padIndex]?.x ?? 800));
+      this.buildSound(tower?.type ?? 'thorn', this.worldPan(this.controller.simulation.geometry.buildPads[event.padIndex]?.x ?? 800));
     } else if (event.type === 'tower-upgraded') {
       const tower = this.snapshot.towers.find((candidate) => candidate.uid === event.towerUid);
-      const point = tower ? BUILD_PADS[tower.padIndex] : undefined;
+      const point = tower ? this.controller.simulation.geometry.buildPads[tower.padIndex] : undefined;
       this.upgradeFanfare(tower?.type ?? 'thorn', this.worldPan(point?.x ?? 800));
     } else if (event.type === 'tower-sold') {
       this.playSample('select', 0, .3, .86);
@@ -746,7 +745,7 @@ export class AudioDirector {
       this.criticalCue('boss', () => this.bossWarning(this.worldPan(event.point.x)));
     } else if (event.type === 'tower-disabled') {
       const tower = this.snapshot.towers.find((candidate) => candidate.uid === event.towerUid);
-      this.breakerSnap(this.worldPan(tower ? BUILD_PADS[tower.padIndex]?.x ?? 800 : 800));
+      this.breakerSnap(this.worldPan(tower ? this.controller.simulation.geometry.buildPads[tower.padIndex]?.x ?? 800 : 800));
     } else if (event.type === 'victory') {
       this.victoryFanfare();
       this.stopCurrentMusic(1.2);

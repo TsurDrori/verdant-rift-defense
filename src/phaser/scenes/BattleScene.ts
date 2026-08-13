@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { ASSETS } from '../../game/assets/manifest';
-import { ACTIVE_BATTLE_MAP } from '../../game/content/maps';
-import { BUILD_PADS, PATH_HALF_WIDTH, pointInPathLane, projectPointToPath } from '../../game/simulation/geometry';
+import { assetUrl } from '../../game/assets/url';
+import type { ProceduralMapVisual } from '../../game/content/maps/types';
+import type { RunDefinition } from '../../game/content/stages/types';
 import type { AttackPresentationEvent, GameEvent, ProjectileStyle } from '../../game/simulation/state';
 import { GameController } from '../adapters/GameController';
 import {
@@ -46,14 +47,37 @@ export class BattleScene extends Phaser.Scene {
   private presentationPaused = false;
   private enemyReleaseDelays = new Map<number, number[]>();
   private allyImpactDelays = new Map<string, number[]>();
+  private runChangeHandler?: EventListener;
 
   constructor(controller: GameController) { super('battle'); this.controller = controller; }
 
+  preload(): void {
+    this.controller.run.assets.images.forEach((image) => {
+      if (!this.textures.exists(image.key)) this.load.image(image.key, assetUrl(image.path));
+    });
+  }
+
   create(): void {
+    this.enemyViews.clear();
+    this.defenderViews.clear();
+    this.towerViews.clear();
+    this.heroViews.clear();
+    this.padRings = [];
+    const activeStageAssetKeys = this.controller.run.assets.images.map((image) => image.key);
+    this.runChangeHandler = ((event: CustomEvent<RunDefinition>) => {
+      const nextAssetKeys = new Set(event.detail.assets.images.map((image) => image.key));
+      activeStageAssetKeys.forEach((key) => { if (!nextAssetKeys.has(key) && this.textures.exists(key)) this.textures.remove(key); });
+      this.scene.restart();
+    }) as EventListener;
+    this.controller.addEventListener('run-change', this.runChangeHandler);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      if (this.runChangeHandler) this.controller.removeEventListener('run-change', this.runChangeHandler);
+      this.runChangeHandler = undefined;
+    });
     this.spellEffects = new SpellEffects(this);
     this.cameras.main.setBackgroundColor(0x071310);
-    const { width, height } = ACTIVE_BATTLE_MAP.world;
-    this.add.image(width / 2, height / 2, ASSETS.environment.verdantRift).setDisplaySize(width, height).setDepth(0);
+    const { width, height } = this.controller.run.map.world;
+    this.createMapVisual();
     this.add.rectangle(width / 2, height / 2, width, height, 0x071410, 0.08).setDepth(1);
     this.createAuthoritativeRoad();
     this.createAmbientFx();
@@ -70,20 +94,111 @@ export class BattleScene extends Phaser.Scene {
     this.tweens.add({ targets: this.towerFocusRing, scaleX: 1.14, scaleY: 1.08, alpha: { from: 0.92, to: 0.38 }, duration: 680, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]) => {
       if (this.uiOwnsPointer(pointer)) return;
-      if (over.length === 0) {
-        const point = { x: pointer.worldX, y: pointer.worldY };
-        const nearestPad = BUILD_PADS
-          .map((pad, index) => ({ index, distance: Phaser.Math.Distance.Between(point.x, point.y, pad.x, pad.y) }))
-          .sort((a, b) => a.distance - b.distance)[0];
-        // Input zones and generated sprites remain the primary targets. This
-        // geometric fallback makes the authored foundation itself canonical
-        // if a transparent sprite gap or a just-refreshed hit list yields no
-        // Phaser object under an otherwise valid pad tap.
-        if (nearestPad && nearestPad.distance <= 56) this.controller.selectPad(nearestPad.index);
-        else this.controller.worldAction(point);
-      }
+      if (this.routeProxyToSelectedHero(pointer)) return;
+      const point = this.pointerWorldPoint(pointer);
+      const nearestPad = this.controller.simulation.geometry.buildPads
+        .map((pad, index) => ({ index, distance: Phaser.Math.Distance.Between(point.x, point.y, pad.x, pad.y) }))
+        .sort((a, b) => a.distance - b.distance)[0];
+      // Canonical geometry resolves foundation presses even when Phaser's
+      // preceding hit-test sampled a pre-reflow canvas rectangle. It also
+      // normalizes transparent sprite gaps and procedural/painted maps.
+      if (nearestPad && nearestPad.distance <= 56) this.controller.selectPad(nearestPad.index);
+      else if (over.length === 0) this.controller.worldAction(point);
     });
     this.controller.markRuntimeReady();
+  }
+
+  private createMapVisual(): void {
+    const map = this.controller.run.map;
+    if (map.visual.kind === 'painted') {
+      this.add.image(map.world.width / 2, map.world.height / 2, map.visual.assetKey).setDisplaySize(map.world.width, map.world.height).setDepth(0);
+      return;
+    }
+    this.createProceduralMap(map.visual);
+  }
+
+  private createProceduralMap(visual: ProceduralMapVisual): void {
+    const map = this.controller.run.map;
+    const color = (hex: string): number => Number.parseInt(hex.slice(1), 16);
+    let seed = visual.seed >>> 0;
+    const random = (): number => {
+      seed += 0x6d2b79f5;
+      let value = seed;
+      value = Math.imul(value ^ value >>> 15, value | 1);
+      value ^= value + Math.imul(value ^ value >>> 7, value | 61);
+      return ((value ^ value >>> 14) >>> 0) / 4294967296;
+    };
+    const terrain = this.add.graphics().setDepth(0).setName('procedural-map-terrain');
+    terrain.fillStyle(color(visual.palette.ground), 1).fillRect(0, 0, map.world.width, map.world.height);
+    for (let index = 0; index < 95; index += 1) {
+      const x = random() * map.world.width;
+      const y = random() * map.world.height;
+      const radius = 25 + random() * 95;
+      terrain.fillStyle(color(index % 3 ? visual.palette.groundAlt : visual.palette.ground), 0.08 + random() * 0.08).fillCircle(x, y, radius);
+    }
+    for (const water of visual.waterBands) {
+      this.add.ellipse(water.x, water.y, water.width, water.height, color(visual.palette.water), 0.93)
+        .setStrokeStyle(8, color(visual.palette.accent), 0.13).setRotation(water.rotation ?? 0).setDepth(0.15);
+      this.add.ellipse(water.x, water.y, water.width * 0.72, water.height * 1.01, 0x55b7bd, 0.07)
+        .setRotation(water.rotation ?? 0).setDepth(0.16);
+    }
+
+    const roads = this.add.graphics().setDepth(0.5).setName('procedural-map-roads');
+    for (const route of map.routes) {
+      roads.lineStyle(route.halfWidth * 2 + 24, color(visual.palette.roadEdge), 0.88).strokePoints([...route.centerline], false, false);
+      roads.lineStyle(route.halfWidth * 2 + 14, 0x30291d, 0.22).strokePoints([...route.centerline], false, false);
+      roads.lineStyle(route.halfWidth * 2, color(visual.palette.road), 1).strokePoints([...route.centerline], false, false);
+      roads.lineStyle(3, 0xf0d79e, 0.22).strokePoints([...route.centerline], false, false);
+      for (let progress = 0.04; progress < 0.98; progress += 0.035) {
+        const frame = this.controller.simulation.geometry.frame(progress, route.id);
+        const offset = (random() - 0.5) * route.halfWidth * 1.15;
+        const x = frame.x + frame.normal.x * offset;
+        const y = frame.y + frame.normal.y * offset;
+        roads.fillStyle(random() > 0.5 ? 0x735f3f : 0xd1b980, 0.32).fillEllipse(x, y, 8 + random() * 13, 3 + random() * 5);
+      }
+    }
+
+    const foliageCount = Math.round(360 * visual.density);
+    for (let index = 0; index < foliageCount; index += 1) {
+      const point = { x: 20 + random() * (map.world.width - 40), y: 20 + random() * (map.world.height - 40) };
+      const projection = this.controller.simulation.geometry.project(point);
+      if (projection.distance < this.controller.simulation.geometry.halfWidth(projection.routeId) + 26) continue;
+      if (map.buildPads.some((pad) => Phaser.Math.Distance.Between(point.x, point.y, pad.x, pad.y) < pad.radius + 34)) continue;
+      const foliageColor = color(visual.palette.foliage[Math.floor(random() * visual.palette.foliage.length)]!);
+      const size = 8 + random() * 28;
+      const shadow = this.add.ellipse(point.x + 4, point.y + size * 0.28, size * 1.25, size * 0.5, 0x061a12, 0.28).setDepth(0.62);
+      const crown = this.add.circle(point.x, point.y, size * 0.55, foliageColor, 0.9).setStrokeStyle(2, 0xa4c86c, 0.08).setDepth(0.63);
+      shadow.setRotation(random() * Math.PI);
+      crown.setScale(0.72 + random() * 0.5, 0.82 + random() * 0.45);
+    }
+
+    for (const pad of map.buildPads) {
+      this.add.ellipse(pad.x + 3, pad.y + 7, pad.radius * 2.35, pad.radius * 1.55, 0x071812, 0.4).setDepth(0.72);
+      this.add.circle(pad.x, pad.y, pad.radius + 8, color(visual.palette.roadEdge), 0.98).setStrokeStyle(3, 0xd8c38b, 0.4).setDepth(0.73);
+      this.add.circle(pad.x, pad.y, pad.radius - 3, color(visual.palette.road), 0.96).setStrokeStyle(2, 0x6d593a, 0.8).setDepth(0.74);
+      this.add.circle(pad.x, pad.y, 17, 0x183b2b, 0.82).setStrokeStyle(2, color(visual.palette.accent), 0.32).setDepth(0.75);
+    }
+
+    for (const landmark of visual.landmarks) {
+      const scale = landmark.scale ?? 1;
+      const root = this.add.container(landmark.x, landmark.y).setRotation(landmark.rotation ?? 0).setScale(scale).setDepth(0.8);
+      if (landmark.kind === 'wardstone') {
+        root.add([
+          this.add.ellipse(0, 13, 94, 30, 0x071812, 0.48),
+          this.add.polygon(0, -20, [-25, 31, -19, -42, 0, -66, 23, -37, 28, 34], 0x526f62, 1).setStrokeStyle(4, 0x142b25, 0.9),
+          this.add.polygon(0, -26, [0, -25, 12, 0, 0, 22, -12, 0], color(visual.palette.accent), 0.72).setStrokeStyle(2, 0xcfffe5, 0.45),
+        ]);
+      } else if (landmark.kind === 'ruin') {
+        root.add([this.add.rectangle(-20, -18, 18, 76, 0x665f4b).setStrokeStyle(3, 0x25281f), this.add.rectangle(22, -10, 18, 60, 0x665f4b).setStrokeStyle(3, 0x25281f), this.add.arc(0, -43, 43, 190, 350, false, 0x80745a, 1).setStrokeStyle(5, 0x25281f)]);
+      } else if (landmark.kind === 'crystal') {
+        root.add([-24, 0, 25].map((x, index) => this.add.polygon(x, 0, [0, -48 + index * 8, 14, 9, 0, 30, -14, 9], index === 1 ? 0x8f73d6 : 0x4fa4a0, 0.82).setStrokeStyle(2, 0xcab8ff, 0.42)));
+      } else {
+        root.add(Array.from({ length: 7 }, (_, index) => {
+          const angle = index / 7 * Math.PI * 2;
+          return this.add.circle(Math.cos(angle) * 30, Math.sin(angle) * 18, 17 + index % 3 * 4, color(visual.palette.foliage[index % visual.palette.foliage.length]!), 0.92);
+        }));
+      }
+    }
   }
 
   private uiOwnsPointer(pointer: Phaser.Input.Pointer): boolean {
@@ -121,7 +236,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private createPads(): void {
-    BUILD_PADS.forEach((pad, index) => {
+    this.controller.simulation.geometry.buildPads.forEach((pad, index) => {
       const container = this.add.container(pad.x, pad.y).setDepth(15);
       const hover = this.add.circle(0, 0, 37, 0x9ce2b8, 0).setStrokeStyle(2, 0xf4dda7, 0.1);
       const socket = this.add.circle(0, 0, 15, 0x132d28, 0.62).setStrokeStyle(1.5, 0xd7c58b, 0.48);
@@ -141,7 +256,7 @@ export class BattleScene extends Phaser.Scene {
       // along the road, so generosity never masquerades as visible geometry.
       hover.setInteractive({ useHandCursor: true }).on('pointerdown', (pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
         event.stopPropagation();
-        if (!this.uiOwnsPointer(pointer)) this.controller.selectPad(index);
+        if (!this.uiOwnsPointer(pointer) && !this.routeProxyToSelectedHero(pointer)) this.controller.selectPad(index);
       });
       container.on('pointerover', () => { hover.setFillStyle(0x9ce2b8, 0.14).setStrokeStyle(2.5, 0xbef5d4, 0.82); rune.setFillStyle(0xffe897, 0.95); container.setScale(1.08); });
       container.on('pointerout', () => { hover.setFillStyle(0x9ce2b8, 0).setStrokeStyle(2, 0xf4dda7, 0.1); rune.setFillStyle(0xc9e7bd, 0.75); container.setScale(1); });
@@ -156,38 +271,58 @@ export class BattleScene extends Phaser.Scene {
   private createAuthoritativeRoad(): void {
     const corridor = this.add.graphics().setDepth(2).setName('authoritative-road-corridor');
     const steps = 96;
-    const centerline = Array.from({ length: steps + 1 }, (_, index) => pointInPathLane(index / steps, 0));
-    const leftEdge = Array.from({ length: steps + 1 }, (_, index) => pointInPathLane(index / steps, -PATH_HALF_WIDTH));
-    const rightEdge = Array.from({ length: steps + 1 }, (_, index) => pointInPathLane(index / steps, PATH_HALF_WIDTH));
-    corridor.setData('halfWidth', PATH_HALF_WIDTH).setData('source', 'TILED_MAP');
-    // Thin exact boundaries reconcile the painted stones with navigation truth
-    // without laying an opaque polygon over the environment illustration.
-    corridor.lineStyle(1.5, 0xf0dfa3, 0.18).strokePoints(centerline, false, false);
-    corridor.lineStyle(2.25, 0xd9d49b, 0.44).strokePoints(leftEdge, false, false);
-    corridor.lineStyle(2.25, 0xa7d9b2, 0.44).strokePoints(rightEdge, false, false);
-    corridor.lineStyle(2, 0xe8dfad, 0.3);
-    for (let progress = 0.04; progress < 0.98; progress += 0.06) {
-      const inside = pointInPathLane(progress, -6);
-      const outside = pointInPathLane(progress, 6);
-      corridor.lineBetween(inside.x, inside.y, outside.x, outside.y);
+    for (const routeId of this.controller.simulation.geometry.routeIds()) {
+      const halfWidth = this.controller.simulation.geometry.halfWidth(routeId);
+      const centerline = Array.from({ length: steps + 1 }, (_, index) => this.controller.simulation.geometry.lanePoint(index / steps, 0, routeId));
+      const leftEdge = Array.from({ length: steps + 1 }, (_, index) => this.controller.simulation.geometry.lanePoint(index / steps, -halfWidth, routeId));
+      const rightEdge = Array.from({ length: steps + 1 }, (_, index) => this.controller.simulation.geometry.lanePoint(index / steps, halfWidth, routeId));
+      corridor.lineStyle(1.5, 0xf0dfa3, 0.26).strokePoints(centerline, false, false);
+      corridor.lineStyle(2.25, 0xd9d49b, 0.58).strokePoints(leftEdge, false, false);
+      corridor.lineStyle(2.25, 0xa7d9b2, 0.58).strokePoints(rightEdge, false, false);
+      corridor.lineStyle(2, 0xe8dfad, 0.38);
+      for (let progress = 0.04; progress < 0.98; progress += 0.06) {
+        const inside = this.controller.simulation.geometry.lanePoint(progress, -6, routeId);
+        const outside = this.controller.simulation.geometry.lanePoint(progress, 6, routeId);
+        corridor.lineBetween(inside.x, inside.y, outside.x, outside.y);
+      }
     }
-    // Authored geometry is visible in Tiled and through ?debugMap=1. Keeping
-    // the diagnostic corridor out of normal play prevents editor guides from
-    // competing with the painted road.
+    corridor.setData('halfWidth', this.controller.simulation.geometry.halfWidth()).setData('source', 'CONTENT_PACKAGE').setData('routeCount', this.controller.run.map.routes.length);
     corridor.setVisible(new URLSearchParams(window.location.search).has('debugMap'));
   }
 
   private routeProxyToSelectedHero(pointer: Phaser.Input.Pointer): boolean {
     if (this.controller.isSpellCastMode() || this.controller.selection.kind !== 'hero') return false;
-    const point = { x: pointer.worldX, y: pointer.worldY };
-    if (projectPointToPath(point).distance > PATH_HALF_WIDTH + 8) return false;
+    const point = this.pointerWorldPoint(pointer);
+    const projection = this.controller.simulation.geometry.project(point);
+    if (projection.distance > this.controller.simulation.geometry.halfWidth(projection.routeId) + 8) return false;
     this.controller.worldAction(point);
     return true;
   }
 
+  private pointerWorldPoint(pointer: Phaser.Input.Pointer): { x: number; y: number } {
+    const native = pointer.event as Event & {
+      clientX?: number; clientY?: number;
+      touches?: ArrayLike<{ clientX: number; clientY: number }>;
+      changedTouches?: ArrayLike<{ clientX: number; clientY: number }>;
+    };
+    const contact = native.touches?.[0] ?? native.changedTouches?.[0];
+    const clientX = native.clientX ?? contact?.clientX;
+    const clientY = native.clientY ?? contact?.clientY;
+    const bounds = this.game.canvas.getBoundingClientRect();
+    if (clientX === undefined || clientY === undefined || bounds.width <= 0 || bounds.height <= 0) {
+      pointer.updateWorldPoint(this.cameras.main);
+      return { x: pointer.worldX, y: pointer.worldY };
+    }
+    const world = this.controller.run.map.world;
+    return {
+      x: Phaser.Math.Clamp((clientX - bounds.left) / bounds.width * world.width, 0, world.width),
+      y: Phaser.Math.Clamp((clientY - bounds.top) / bounds.height * world.height, 0, world.height),
+    };
+  }
+
   private createAmbientFx(): void {
     const particles = this.add.particles(0, 0, '__DEFAULT', {
-      x: { min: 0, max: 1600 }, y: { min: 0, max: 900 }, quantity: 1, frequency: 310,
+      x: { min: 0, max: this.controller.run.map.world.width }, y: { min: 0, max: this.controller.run.map.world.height }, quantity: 1, frequency: 310,
       lifespan: { min: 1900, max: 3500 }, speedY: { min: -14, max: -4 }, speedX: { min: -5, max: 5 },
       scale: { start: 0.035, end: 0 }, tint: [0x9af5c9, 0xf7d77d, 0xaa83ff], alpha: { start: 0.75, end: 0 },
       blendMode: Phaser.BlendModes.ADD,
@@ -196,15 +331,16 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private createRouteCues(): void {
-    const entranceMarker = ACTIVE_BATTLE_MAP.markers.entrance;
-    const entrance = this.add.container(entranceMarker.x, entranceMarker.y).setDepth(86);
-    const enterPlate = this.add.rectangle(0, -27, 132, 22, 0x071b17, 0.82).setStrokeStyle(1, 0xb7edc9, 0.42);
-    const enterLabel = this.add.text(0, -27, entranceMarker.label, { fontFamily: 'Trebuchet MS, sans-serif', fontSize: '12px', fontStyle: 'bold', color: '#eaffdf', stroke: '#10221d', strokeThickness: 3 }).setOrigin(0.5);
-    const enterChevrons = [0, 1, 2].map((index) => this.add.polygon(-24 + index * 24, 0, [-10, -8, 0, 0, -10, 8, -4, 8, 7, 0, -4, -8], 0xcaffc9, 0.55).setStrokeStyle(1,0x0a2a24,0.8));
-    entrance.add([enterPlate, enterLabel, ...enterChevrons]).setRotation(0.16);
-    enterChevrons.forEach((chevron, index) => this.tweens.add({ targets: chevron, alpha: { from: 0.2, to: 0.88 }, duration: 560, delay: index * 150, yoyo: true, repeat: -1 }));
+    for (const [entranceIndex, entranceMarker] of this.controller.run.map.markers.entrances.entries()) {
+      const entrance = this.add.container(entranceMarker.x, entranceMarker.y).setDepth(86);
+      const enterPlate = this.add.rectangle(0, -27, 132, 22, 0x071b17, 0.82).setStrokeStyle(1, 0xb7edc9, 0.42);
+      const enterLabel = this.add.text(0, -27, entranceMarker.label, { fontFamily: 'Trebuchet MS, sans-serif', fontSize: '12px', fontStyle: 'bold', color: '#eaffdf', stroke: '#10221d', strokeThickness: 3 }).setOrigin(0.5);
+      const enterChevrons = [0, 1, 2].map((index) => this.add.polygon(-24 + index * 24, 0, [-10, -8, 0, 0, -10, 8, -4, 8, 7, 0, -4, -8], 0xcaffc9, 0.55).setStrokeStyle(1,0x0a2a24,0.8));
+      entrance.add([enterPlate, enterLabel, ...enterChevrons]).setRotation(entranceIndex % 2 ? -0.08 : 0.08);
+      enterChevrons.forEach((chevron, index) => this.tweens.add({ targets: chevron, alpha: { from: 0.2, to: 0.88 }, duration: 560, delay: index * 150, yoyo: true, repeat: -1 }));
+    }
 
-    const gateMarker = ACTIVE_BATTLE_MAP.markers.gate;
+    const gateMarker = this.controller.run.map.markers.gate;
     const exit = this.add.container(gateMarker.x, gateMarker.y).setDepth(86);
     const exitRing = this.add.ellipse(0, 0, 126, 56, 0xffce5c, 0.08).setStrokeStyle(3, 0xffdf79, 0.58).setBlendMode(Phaser.BlendModes.ADD);
     const crest = this.add.polygon(-43, -38, [0,-13,12,-6,10,9,0,15,-10,9,-12,-6],0xc69d42,0.95).setStrokeStyle(2,0xffe69d,0.8);
@@ -248,7 +384,7 @@ export class BattleScene extends Phaser.Scene {
       if (!view) {
         view = createTowerView(this, tower);
         view.setName(`tower-view-${tower.uid}`);
-        const point = BUILD_PADS[tower.padIndex]!;
+        const point = this.controller.simulation.geometry.buildPads[tower.padIndex]!;
         view.setPosition(point.x, point.y);
         // Generated branch silhouettes are wider than the base towers and two
         // vertically adjacent pads overlap in screen space. Pixel-perfect
@@ -256,7 +392,7 @@ export class BattleScene extends Phaser.Scene {
         // allowing a transparent rectangle to steal the neighboring tower.
         const selectTower = (_pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData): void => {
           event.stopPropagation();
-          if (!this.uiOwnsPointer(_pointer)) this.controller.selectTower(tower.uid);
+          if (!this.uiOwnsPointer(_pointer) && !this.routeProxyToSelectedHero(_pointer)) this.controller.selectTower(tower.uid);
         };
         const selectTowerProxy = (_pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData): void => {
           event.stopPropagation();
@@ -442,7 +578,7 @@ export class BattleScene extends Phaser.Scene {
     if (selection.kind === 'tower') {
       const tower = this.controller.selectedTower();
       if (!tower) { this.rangeRing.setVisible(false); this.spellEffectRing.setVisible(false); this.towerFocusRing.setVisible(false); return; }
-      const point = BUILD_PADS[tower.padIndex]!;
+      const point = this.controller.simulation.geometry.buildPads[tower.padIndex]!;
       const definition = this.controller.towerDefinition(tower.type);
       const levelStats = tower.level === 1 ? undefined : definition.upgrades[tower.level - 2];
       const branchScale = tower.branch ? definition.branches[tower.branch].rangeMultiplier : 1;
@@ -564,7 +700,7 @@ export class BattleScene extends Phaser.Scene {
       this.cameras.main.shake(180, 0.0045);
       this.cameras.main.flash(100, 120, 20, 30, false);
     } else if (event.type === 'tower-built') {
-      const point = BUILD_PADS[event.padIndex]!;
+      const point = this.controller.simulation.geometry.buildPads[event.padIndex]!;
       this.flashImpact(point.x, point.y, 0xffdd86, 44);
     } else if (event.type === 'hero-spell-cast') {
       const hero = this.controller.snapshot().heroes.find((candidate) => candidate.id === event.hero);

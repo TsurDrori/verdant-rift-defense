@@ -70,6 +70,8 @@ export interface WaveGroup {
   count: number;
   interval: number;
   delay: number;
+  /** Route is content-authored; omitted groups use the map's primary route. */
+  route?: string;
 }
 
 export interface WaveDefinition {

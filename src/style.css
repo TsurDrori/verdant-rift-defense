@@ -500,7 +500,7 @@ html.tactical-context-pause .view-controls {
   #game-root { background:radial-gradient(circle at 50% 50%,#122b24,#071310 74%); scrollbar-width:none; overscroll-behavior:contain; }
   #game-root::-webkit-scrollbar { display:none; }
   #game-root canvas { touch-action:none; }
-  html.portrait-focus #game-root { overflow-x:auto; overflow-y:hidden; scroll-behavior:smooth; }
+  html.portrait-focus #game-root { overflow-x:auto; overflow-y:hidden; scroll-behavior:auto; }
   html.portrait-focus #game-root::before { content:""; display:block; width:900px; height:100%; }
   html.portrait-focus #game-root canvas { position:absolute !important; top:50% !important; left:0 !important; width:900px !important; height:auto !important; max-width:none !important; margin:0 !important; transform:translateY(-50%); touch-action:pan-x; }
   .resource-ribbon { top:max(8px,env(safe-area-inset-top)); left:max(8px,env(safe-area-inset-left)); bottom:auto; height:54px; }

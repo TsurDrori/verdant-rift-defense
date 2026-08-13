@@ -1,8 +1,10 @@
 import Phaser from 'phaser';
 import { ASSET_PATHS, SPRITESHEETS } from '../../game/assets/manifest';
+import { assetUrl } from '../../game/assets/url';
+import { GameController } from '../adapters/GameController';
 
 export class BootScene extends Phaser.Scene {
-  constructor() { super('boot'); }
+  constructor(private readonly controller: GameController) { super('boot'); }
 
   preload(): void {
     const width = this.scale.width;
@@ -17,6 +19,10 @@ export class BootScene extends Phaser.Scene {
     const bar = this.add.rectangle(width / 2 - 154, height / 2 + 26, 0, 5, 0x7dd9b1).setOrigin(0, 0.5);
     this.load.on('progress', (progress: number) => { bar.width = 308 * progress; });
     Object.entries(ASSET_PATHS).forEach(([key, path]) => this.load.image(key, path));
+    const staticKeys = new Set(Object.keys(ASSET_PATHS));
+    this.controller.run.assets.images.forEach((image) => {
+      if (!staticKeys.has(image.key)) this.load.image(image.key, assetUrl(image.path));
+    });
     Object.entries(SPRITESHEETS).forEach(([key, sheet]) => this.load.spritesheet(key, sheet.path, {
       frameWidth: sheet.frameWidth,
       frameHeight: sheet.frameHeight,

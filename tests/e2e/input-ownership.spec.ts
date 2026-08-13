@@ -70,11 +70,11 @@ test('armed spell button becomes the cancel button in place', async ({ page }) =
   await expect(spell).toHaveAttribute('aria-label', /Cast Rift Quake.*Kael/);
 });
 
-test('invisible tower tolerance never steals a selected hero road command', async ({ page }) => {
+test('an adjacent tower never steals a selected hero road command', async ({ page }) => {
   await enterBattle(page);
   await page.evaluate(() => {
     const controller = window.__VERDANT_RIFT__!;
-    controller.simulation.buildTower(7, 'thorn');
+    controller.simulation.buildTower(9, 'thorn');
     controller.update(0);
   });
   const card = await page.locator('[data-hero-card="kael"]').boundingBox();
@@ -82,15 +82,20 @@ test('invisible tower tolerance never steals a selected hero road command', asyn
   await page.mouse.click(card.x + card.width * 0.58, card.y + card.height * 0.5);
   await expect.poll(() => page.evaluate(() => window.__VERDANT_RIFT__!.selection)).toEqual({ kind: 'hero', heroId: 'kael' });
 
-  // This is on the authoritative road and inside pad 8's oversized tolerance,
-  // but outside the deliberately painted foundation center.
-  await clickWorld(page, 1168, 700);
+  // The package compiler now guarantees that foundations clear the lane edge.
+  // Command on pad 10's nearest authoritative road point to prove the adjacent
+  // tower cannot steal ownership from the selected hero.
+  const roadPoint = await page.evaluate(() => {
+    const geometry = window.__VERDANT_RIFT__!.simulation.geometry;
+    return geometry.project(geometry.buildPads[9]!).point;
+  });
+  await clickWorld(page, roadPoint.x, roadPoint.y);
   await expect.poll(() => page.evaluate(() => window.__VERDANT_RIFT__!.selection)).toEqual({ kind: 'hero', heroId: 'kael' });
   const road = await page.evaluate(() => {
     const object = window.__VERDANT_RIFT_GAME__!.scene.getScene('battle').children.getByName('authoritative-road-corridor') as unknown as { getData(key: string): unknown };
     return { halfWidth: object.getData('halfWidth'), source: object.getData('source') };
   });
-  expect(road).toEqual({ halfWidth: 36, source: 'TILED_MAP' });
+  expect(road).toEqual({ halfWidth: 36, source: 'CONTENT_PACKAGE' });
   await page.screenshot({ path: 'test-results/input-ownership/road-and-command-rail.png' });
 });
 

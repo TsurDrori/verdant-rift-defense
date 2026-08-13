@@ -1,0 +1,16 @@
+{
+  "id": "__STAGE_ID__", "title": "New Stand", "world": { "width": 1600, "height": 900 },
+  "visual": {
+    "kind": "procedural", "seed": 1, "density": 0.6,
+    "palette": { "ground": "#183b2b", "groundAlt": "#24543a", "road": "#b99b67", "roadEdge": "#6d593a", "water": "#1b6270", "foliage": ["#173e2b", "#497d3f"], "accent": "#9ee6c2" },
+    "waterBands": [], "landmarks": []
+  },
+  "primaryRouteId": "main",
+  "routes": [{ "id": "main", "halfWidth": 38, "centerline": [{ "x": -50, "y": 180 }, { "x": 400, "y": 240 }, { "x": 800, "y": 450 }, { "x": 1200, "y": 650 }, { "x": 1650, "y": 760 }] }],
+  "buildPads": [
+    { "id": "pad-0", "x": 280, "y": 120, "radius": 38 }, { "id": "pad-1", "x": 500, "y": 370, "radius": 38 },
+    { "id": "pad-2", "x": 720, "y": 300, "radius": 38 }, { "id": "pad-3", "x": 930, "y": 600, "radius": 38 },
+    { "id": "pad-4", "x": 1160, "y": 500, "radius": 38 }, { "id": "pad-5", "x": 1390, "y": 790, "radius": 38 }
+  ],
+  "markers": { "entrances": [{ "routeId": "main", "x": 85, "y": 180, "label": "APPROACH" }], "gate": { "x": 1510, "y": 760, "label": "GATE" } }
+}

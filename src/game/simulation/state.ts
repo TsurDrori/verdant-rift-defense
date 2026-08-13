@@ -5,6 +5,7 @@ export interface EnemyState extends Vec2 {
   uid: number;
   wave: number;
   type: EnemyId;
+  routeId: string;
   hp: number;
   maxHp: number;
   progress: number;

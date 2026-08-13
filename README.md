@@ -17,6 +17,17 @@ pnpm dev
 
 Open `http://localhost:4173`.
 
+## Create a complete stage
+
+```bash
+pnpm stage:new my-stage
+# edit content/stages/my-stage/{stage,map,waves}.json
+pnpm content:sync
+pnpm dev
+```
+
+Open `http://localhost:4173/?stage=my-stage&debugMap=1` to preview a playable package and its authoritative route overlay. The content pipeline supports painted and deterministic procedural maps, multiple routes, route-specific waves, stage economy, objectives, hero spawns, and stage-scoped assets without a GUI map editor. See [`docs/MAP_AUTHORING.md`](./docs/MAP_AUTHORING.md).
+
 ## Controls
 
 - Mouse/touch: select foundations, build, upgrade, specialize, command heroes
@@ -30,7 +41,8 @@ Open `http://localhost:4173`.
 
 ## Included
 
-- 12 overlapping waves, five enemy archetypes, three difficulties, proportional star scoring
+- Two playable data-driven stages: a 12-wave painted map and a 10-wave procedural multi-route map
+- Five enemy archetypes, three difficulties, proportional star scoring
 - Four tower families with three ranks and two mechanically distinct final branches each
 - Armor/resistance, flying coverage, burn, slow, mark, expose, splash, chain, aura, and targeting priorities
 - Two directly commandable heroes with distinct attacks and ultimates
@@ -41,6 +53,7 @@ Open `http://localhost:4173`.
 - Fixed 60 Hz deterministic simulation and impact-synchronized health, bounty, audio, defeat, and victory presentation
 - Responsive landscape/portrait behavior, keyboard play, reduced motion, contrast mode, pause-on-hidden, and persistent sound settings
 - Campaign hub with stage route, hero hall, permanent-upgrade grove, field guide, and settings surfaces backed by a versioned profile
+- Build-validated AI-native content packages with one-command scaffolding and direct stage preview
 
 ## Music
 

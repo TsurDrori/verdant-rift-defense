@@ -3,13 +3,14 @@ import { COMBAT_BALANCE } from '../content/combatBalance';
 import { HERO_ARTIFACTS, HERO_LEVEL_THRESHOLDS, HERO_MILESTONES, HERO_PRIMARY_SPELL, HERO_SPELLS, HERO_XP_BY_ENEMY, heroAbilitySpec, heroUnlockedSpells, isHeroActiveSpell } from '../content/heroProgression';
 import { TOWERS } from '../content/towers';
 import type { DamageType, HeroActiveSpellId, HeroArtifactId, HeroId, TowerBranch, TowerId, WaveGroup } from '../content/types';
-import { TACTICAL_PRESSURE_GROUPS, WAVES } from '../content/waves';
-import { BUILD_PADS, distance, PATH_LENGTH, pointInPathLane, pointOnPath, projectPointToPath, type Vec2 } from './geometry';
+import { RUN_DEFINITIONS } from '../content/generated/stages';
+import type { RunDefinition } from '../content/stages/types';
+import { distance, PathGeometry, type Vec2 } from './geometry';
 import type { AttackPresentationActor, AttackPresentationStyle, DamageOwner, DefenderState, DifficultyId, EnemyState, GameEvent, GamePhase, GameSnapshot, HeroState, ProjectileStyle, TowerState } from './state';
 
-interface SpawnOrder { at: number; enemy: keyof typeof ENEMIES; wave: number }
+interface SpawnOrder { at: number; enemy: keyof typeof ENEMIES; wave: number; routeId: string }
 interface BossStrike { at: number; towerUid: number }
-interface BossEscort { at: number; enemy: keyof typeof ENEMIES; wave: number }
+interface BossEscort { at: number; enemy: keyof typeof ENEMIES; wave: number; routeId: string }
 type HeroTemplate = Omit<HeroState, 'x' | 'y' | 'target' | 'attackCooldown' | 'ultimateCooldown' | 'hp' | 'alive' | 'respawnTime' | 'spawn' | 'engagedEnemyUid'>;
 
 const heroTemplates: Record<HeroId, HeroTemplate> = {
@@ -37,6 +38,8 @@ const enemyPresentation: Record<keyof typeof ENEMIES, { windup: number; travel: 
 };
 
 export class GameSimulation {
+  readonly run: RunDefinition;
+  readonly geometry: PathGeometry;
   private phase: GamePhase = 'briefing';
   private difficulty: DifficultyId = 'warden';
   private difficultyHp = 1;
@@ -74,16 +77,21 @@ export class GameSimulation {
   private towers: TowerState[] = [];
   private defenders: DefenderState[] = [];
   private events: GameEvent[] = [];
-  private heroes: HeroState[] = [
-    // Reserve posts sit behind the primary build line. Moving a hero forward
-    // is now a real command decision rather than free map-wide last-hit income.
-    this.createHero('kael', pointOnPath(0.45)),
-    this.createHero('lyra', pointOnPath(0.68)),
-  ];
+  private heroes: HeroState[];
+
+  constructor(run: RunDefinition = RUN_DEFINITIONS['sunken-way']!) {
+    this.run = run;
+    this.geometry = new PathGeometry(run.map);
+    this.heroes = (['kael', 'lyra'] as HeroId[]).map((id) => {
+      const spawn = run.heroSpawns[id];
+      return this.createHero(id, this.geometry.point(spawn.progress, spawn.routeId));
+    });
+    this.setDifficulty(this.difficulty);
+  }
 
   private createHero(id: HeroId, point: Vec2): HeroState {
     const template = heroTemplates[id];
-    const spawn = projectPointToPath(point).point;
+    const spawn = this.geometry.project(point).point;
     return {
       ...template, milestones: [...template.milestones], unlockedSpells: [...template.unlockedSpells], spellCooldowns: { ...template.spellCooldowns }, ...spawn, target: { ...spawn }, spawn: { ...spawn }, attackCooldown: 0, ultimateCooldown: 0,
       hp: template.maxHp, alive: true, respawnTime: 0, engagedEnemyUid: null,
@@ -91,9 +99,10 @@ export class GameSimulation {
   }
 
   getSnapshot(): GameSnapshot {
+    const waveTarget = this.objectiveWaveTarget();
     return {
       phase: this.phase, difficulty: this.difficulty, gold: this.gold, lives: this.lives, startingLives: this.startingLives, wave: this.waveIndex,
-      waveTotal: WAVES.length, waveActive: this.waveActive, canCallWave: this.nextWaveReady,
+      waveTotal: waveTarget, waveActive: this.waveActive, canCallWave: this.nextWaveReady,
       intermission: this.intermission,
       speed: this.speed, score: this.score, enemies: this.enemies, towers: this.towers, heroes: this.heroes, defenders: this.defenders,
     };
@@ -137,9 +146,11 @@ export class GameSimulation {
   setDifficulty(difficulty: DifficultyId): void {
     if (this.phase !== 'briefing') return;
     this.difficulty = difficulty;
-    if (difficulty === 'wanderer') { this.gold = 360; this.lives = 25; this.difficultyHp = 0.84; this.difficultySpeed = 0.94; }
-    else if (difficulty === 'mythic') { this.gold = 270; this.lives = 15; this.difficultyHp = 1.18; this.difficultySpeed = 1.08; }
-    else { this.gold = 310; this.lives = 20; this.difficultyHp = 1; this.difficultySpeed = 1; }
+    const economy = this.run.economy.difficulties[difficulty];
+    this.gold = economy.startingGold;
+    this.lives = economy.startingLives;
+    this.difficultyHp = economy.enemyHp;
+    this.difficultySpeed = economy.enemySpeed;
     this.applyInsightBonuses();
   }
 
@@ -300,19 +311,21 @@ export class GameSimulation {
   }
 
   startWave(): boolean {
+    const waveTarget = this.objectiveWaveTarget();
     const mayStart = !this.waveActive || this.nextWaveReady;
-    if (this.phase !== 'playing' || !mayStart || this.waveIndex >= WAVES.length) return false;
-    const bonus = this.waveIndex === 0 ? 0 : Math.min(45, Math.max(0, Math.floor(this.intermission * 2.2)));
+    if (this.phase !== 'playing' || !mayStart || this.waveIndex >= waveTarget) return false;
+    const earlyCall = this.run.economy.earlyCall;
+    const bonus = this.waveIndex === 0 ? 0 : Math.min(earlyCall.maximumBonus, Math.max(0, Math.floor(this.intermission * earlyCall.goldPerSecond)));
     this.gold += bonus;
-    if (bonus > 0) this.heroes.forEach((hero) => { this.reduceHeroSpellCooldowns(hero, 2.5); });
+    if (bonus > 0) this.heroes.forEach((hero) => { this.reduceHeroSpellCooldowns(hero, earlyCall.heroCooldownRefund); });
     const waveNumber = this.waveIndex + 1;
-    const wave = WAVES[this.waveIndex]!;
+    const wave = this.run.waves[this.waveIndex]!;
     this.waveIndex += 1;
     this.waveActive = true;
     this.nextWaveReady = false;
     this.waveTime = 0;
     this.intermission = 0;
-    const pressure = this.difficulty === 'wanderer' ? [] : TACTICAL_PRESSURE_GROUPS[waveNumber] ?? [];
+    const pressure = this.difficulty === 'wanderer' ? [] : this.run.tacticalPressure[waveNumber] ?? [];
     this.spawnQueue = this.compileWave([...wave.groups, ...pressure], this.waveIndex);
     this.events.push({ type: 'wave-started', wave: this.waveIndex, bonus });
     if (bonus > 0) this.events.push({ type: 'toast', tone: 'good', message: `Early call: +${bonus} sunshards • champions rally` });
@@ -324,7 +337,14 @@ export class GameSimulation {
       at: group.delay + index * group.interval,
       enemy: group.enemy,
       wave,
+      routeId: group.route ?? this.geometry.primaryRouteId,
     }))).sort((a, b) => a.at - b.at);
+  }
+
+  private intermissionFor(wave: number): number {
+    return this.run.economy.intermissions.find((entry) => wave <= entry.throughWave)?.seconds
+      ?? this.run.economy.intermissions.at(-1)?.seconds
+      ?? 20;
   }
 
   private updateWave(dt: number): void {
@@ -332,18 +352,18 @@ export class GameSimulation {
       this.waveTime += dt;
       while (this.spawnQueue[0] && this.spawnQueue[0].at <= this.waveTime) {
         const order = this.spawnQueue.shift()!;
-        this.spawnEnemy(order.enemy, order.wave);
+        this.spawnEnemy(order.enemy, order.wave, order.routeId);
       }
       if (this.spawnQueue.length === 0) this.spawnCompleteWaves.add(this.waveIndex);
-      if (this.spawnQueue.length === 0 && this.waveIndex < WAVES.length && !this.nextWaveReady) {
+      if (this.spawnQueue.length === 0 && this.waveIndex < this.objectiveWaveTarget() && !this.nextWaveReady) {
         this.nextWaveReady = true;
-        this.intermission = this.waveIndex < 4 ? 18 : this.waveIndex < 8 ? 22 : 26;
+        this.intermission = this.intermissionFor(this.waveIndex);
       }
       if (this.nextWaveReady) {
         this.intermission = Math.max(0, this.intermission - dt);
         if (this.intermission === 0) this.startWave();
       }
-    } else if (this.nextWaveReady && this.waveIndex > 0 && this.waveIndex < WAVES.length && this.intermission > 0) {
+    } else if (this.nextWaveReady && this.waveIndex > 0 && this.waveIndex < this.objectiveWaveTarget() && this.intermission > 0) {
       this.intermission = Math.max(0, this.intermission - dt);
       if (this.intermission === 0) this.startWave();
     }
@@ -361,20 +381,24 @@ export class GameSimulation {
       this.score += 250 * wave;
     }
     this.waveActive = this.spawnQueue.length > 0 || this.enemies.some((enemy) => enemy.alive);
-    if (this.clearedWaves.size >= WAVES.length && this.phase === 'playing') {
+    if (this.clearedWaves.size >= this.objectiveWaveTarget() && this.phase === 'playing') {
       this.phase = 'victory';
       this.events.push({ type: 'victory' });
     }
   }
 
-  private spawnEnemy(type: keyof typeof ENEMIES, wave = this.waveIndex): void {
+  private objectiveWaveTarget(): number {
+    return this.run.objectives.find((objective) => objective.type === 'survive-waves')?.count ?? this.run.waves.length;
+  }
+
+  private spawnEnemy(type: keyof typeof ENEMIES, wave = this.waveIndex, routeId = this.geometry.primaryRouteId): void {
     const definition = ENEMIES[type];
     const uid = ++this.enemyUid;
     const laneTarget = COMBAT_BALANCE.lanes.spawnOffsets[(uid - 1) % COMBAT_BALANCE.lanes.spawnOffsets.length]!;
-    const point = pointInPathLane(0, laneTarget);
+    const point = this.geometry.lanePoint(0, laneTarget, routeId);
     const hpScale = this.difficultyHp;
     const enemy: EnemyState = {
-      uid, wave, type, ...point, hp: definition.hp * hpScale,
+      uid, wave, type, routeId, ...point, hp: definition.hp * hpScale,
       maxHp: definition.hp * hpScale, progress: 0, laneOffset: laneTarget, laneTarget, alive: true, slow: 0,
       slowTime: 0, mark: 0, markTime: 0, spawnedAt: this.time,
       burn: 0, burnTime: 0, exposed: 0, exposedTime: 0, bossPhase: 0,
@@ -401,11 +425,12 @@ export class GameSimulation {
   }
 
   private defenderHome(tower: TowerState, slot: number, count: number): Vec2 {
-    const centerProgress = projectPointToPath(BUILD_PADS[tower.padIndex]!).progress;
+    const projection = this.geometry.project(this.geometry.buildPads[tower.padIndex]!);
+    const centerProgress = projection.progress;
     // One formation interval must leave a full bypass pocket for the largest
     // ordinary ground body. Five-unit branches still fit inside the 112 leash.
     const alongLane = (slot - (count - 1) / 2) * 52;
-    return pointOnPath(centerProgress + alongLane / PATH_LENGTH);
+    return this.geometry.point(centerProgress + alongLane / this.geometry.length(projection.routeId), projection.routeId);
   }
 
   private reconcileDefenders(): void {
@@ -470,7 +495,8 @@ export class GameSimulation {
   }
 
   private routeGap(a: Vec2, b: Vec2): number {
-    return Math.abs(projectPointToPath(a).progress - projectPointToPath(b).progress) * PATH_LENGTH;
+    const routeId = 'routeId' in b && typeof b.routeId === 'string' ? b.routeId : this.geometry.project(a).routeId;
+    return Math.abs(this.geometry.project(a, routeId).progress - this.geometry.project(b, routeId).progress) * this.geometry.length(routeId);
   }
 
   private engage(ally: HeroState | DefenderState, enemy: EnemyState): void {
@@ -518,7 +544,9 @@ export class GameSimulation {
    * the authored polyline keeps each fixed tick bounded and traversable.
    */
   private moveAllyOnRoute(ally: HeroState | DefenderState, point: Vec2, speed: number, dt: number, stopDistance = 0): void {
-    const current = projectPointToPath(ally);
+    const targetProjection = this.geometry.project(point);
+    const current = this.geometry.project(ally, targetProjection.routeId);
+    const routeLength = this.geometry.length(targetProjection.routeId);
     const maxStep = speed * dt;
     if (current.distance > 0.5) {
       const recoveryStep = Math.min(current.distance, maxStep);
@@ -526,17 +554,17 @@ export class GameSimulation {
       ally.y += (current.point.y - ally.y) / current.distance * recoveryStep;
       return;
     }
-    const targetProgress = projectPointToPath(point).progress;
-    const signedGap = (targetProgress - current.progress) * PATH_LENGTH;
+    const targetProgress = targetProjection.progress;
+    const signedGap = (targetProgress - current.progress) * routeLength;
     if (Math.abs(signedGap) <= stopDistance + 0.5) {
-      const onRoute = pointOnPath(current.progress);
+      const onRoute = this.geometry.point(current.progress, targetProjection.routeId);
       ally.x = onRoute.x;
       ally.y = onRoute.y;
       return;
     }
     const step = Math.min(Math.abs(signedGap) - stopDistance, maxStep);
-    const nextProgress = current.progress + Math.sign(signedGap) * step / PATH_LENGTH;
-    const next = pointOnPath(nextProgress);
+    const nextProgress = current.progress + Math.sign(signedGap) * step / routeLength;
+    const next = this.geometry.point(nextProgress, targetProjection.routeId);
     ally.x = next.x;
     ally.y = next.y;
   }
@@ -598,13 +626,18 @@ export class GameSimulation {
     for (let index = orderIndex - 1; index >= 0; index -= 1) {
       const ahead = groundOrder[index]!;
       if (!ahead.alive || ahead.uid === enemy.uid || ahead.progress <= enemy.progress) continue;
-      const centerGap = (ahead.progress - enemy.progress) * PATH_LENGTH;
+      if (ahead.routeId !== enemy.routeId) continue;
+      const pathLength = this.geometry.length(enemy.routeId);
+      const centerGap = (ahead.progress - enemy.progress) * pathLength;
       const lateralGap = Math.abs(laneOffset - ahead.laneOffset);
       const sameBandPadding = lateralGap < 1 ? COMBAT_BALANCE.lanes.footprintPadding : 0;
-      const clearance = ENEMIES[enemy.type].radius + ENEMIES[ahead.type].radius + sameBandPadding;
+      // Arc distance is slightly longer than the rendered chord through a
+      // bend. A one-pixel guard keeps circular bodies separated even on a
+      // tightly authored route instead of relying on straight-line geometry.
+      const clearance = ENEMIES[enemy.type].radius + ENEMIES[ahead.type].radius + sameBandPadding + 1.25;
       if (centerGap > clearance + ENEMIES[enemy.type].speed / 30) break;
       const longitudinalClearance = Math.sqrt(Math.max(0, clearance * clearance - lateralGap * lateralGap));
-      limit = Math.min(limit, ahead.progress - longitudinalClearance / PATH_LENGTH);
+      limit = Math.min(limit, ahead.progress - longitudinalClearance / pathLength);
     }
     return Math.max(enemy.progress, limit);
   }
@@ -612,10 +645,11 @@ export class GameSimulation {
   private laneChangeIsClear(enemy: EnemyState, laneOffset: number, groundOrder: readonly EnemyState[]): boolean {
     return groundOrder.every((other) => {
       if (!other.alive || other.uid === enemy.uid) return true;
-      const longitudinalGap = Math.abs(other.progress - enemy.progress) * PATH_LENGTH;
+      if (other.routeId !== enemy.routeId) return true;
+      const longitudinalGap = Math.abs(other.progress - enemy.progress) * this.geometry.length(enemy.routeId);
       const lateralGap = Math.abs(laneOffset - other.laneOffset);
       const sameBandPadding = lateralGap < 1 ? COMBAT_BALANCE.lanes.footprintPadding : 0;
-      const clearance = ENEMIES[enemy.type].radius + ENEMIES[other.type].radius + sameBandPadding;
+      const clearance = ENEMIES[enemy.type].radius + ENEMIES[other.type].radius + sameBandPadding + 1.25;
       if (longitudinalGap >= clearance) return true;
       return Math.hypot(longitudinalGap, lateralGap) >= clearance;
     });
@@ -624,7 +658,7 @@ export class GameSimulation {
   private advanceEnemyOnRoute(enemy: EnemyState, dt: number, groundOrder: readonly EnemyState[], orderIndex: number): void {
     const definition = ENEMIES[enemy.type];
     const speedScale = 1 - Math.min(0.65, enemy.slow);
-    const desiredProgress = enemy.progress + definition.speed * this.difficultySpeed * speedScale * dt / PATH_LENGTH;
+    const desiredProgress = enemy.progress + definition.speed * this.difficultySpeed * speedScale * dt / this.geometry.length(enemy.routeId);
     if (!definition.flying) {
       const currentLimit = this.laneProgressLimit(enemy, enemy.laneTarget, desiredProgress, groundOrder, orderIndex);
       let bestLane = enemy.laneTarget;
@@ -658,7 +692,7 @@ export class GameSimulation {
     } else {
       enemy.progress = Math.min(1, desiredProgress);
     }
-    const point = pointInPathLane(enemy.progress, enemy.laneOffset);
+    const point = this.geometry.lanePoint(enemy.progress, enemy.laneOffset, enemy.routeId);
     enemy.x = point.x;
     enemy.y = point.y;
   }
@@ -677,7 +711,7 @@ export class GameSimulation {
       // Route progress is authoritative even while blocked. This also repairs
       // stale presentation coordinates without allowing combat code to invent
       // a second, off-road position for the same enemy.
-      const routePoint = pointInPathLane(enemy.progress, enemy.laneOffset);
+      const routePoint = this.geometry.lanePoint(enemy.progress, enemy.laneOffset, enemy.routeId);
       enemy.x = routePoint.x;
       enemy.y = routePoint.y;
       enemy.attackCooldown -= dt;
@@ -701,7 +735,7 @@ export class GameSimulation {
         const lateralStep = Math.min(Math.abs(lateralGap), COMBAT_BALANCE.lanes.lateralSpeed * dt);
         if (lateralStep > 0) {
           enemy.laneOffset += Math.sign(lateralGap) * lateralStep;
-          Object.assign(enemy, pointInPathLane(enemy.progress, enemy.laneOffset));
+          Object.assign(enemy, this.geometry.lanePoint(enemy.progress, enemy.laneOffset, enemy.routeId));
         }
       }
       if (!ally && definition.blockable) {
@@ -759,7 +793,7 @@ export class GameSimulation {
       tower.cooldown -= dt;
       if (tower.cooldown > 0) continue;
       const stats = this.towerStats(tower);
-      const point = BUILD_PADS[tower.padIndex]!;
+      const point = this.geometry.buildPads[tower.padIndex]!;
       const target = this.findTarget(point, stats.range, tower.type === 'thorn' || tower.type === 'astral', tower.priority);
       if (!target) continue;
       const wasControlled = target.slow > 0 || target.mark > 0;
@@ -828,8 +862,8 @@ export class GameSimulation {
       fireRate *= branch.fireRateMultiplier;
     }
     if (tower.type === 'aegis' && tower.branch === 'left') fireRate *= 0.82;
-    const point = BUILD_PADS[tower.padIndex]!;
-    const supported = this.towers.some((candidate) => candidate.uid !== tower.uid && candidate.type === 'aegis' && candidate.branch === 'left' && distance(point, BUILD_PADS[candidate.padIndex]!) < 175);
+    const point = this.geometry.buildPads[tower.padIndex]!;
+    const supported = this.towers.some((candidate) => candidate.uid !== tower.uid && candidate.type === 'aegis' && candidate.branch === 'left' && distance(point, this.geometry.buildPads[candidate.padIndex]!) < 175);
     if (supported) fireRate *= 0.84;
     return { range, damage, fireRate, damageType: definition.damageType, splash: definition.splash };
   }
@@ -1046,7 +1080,7 @@ export class GameSimulation {
     if (!hero || !hero.alive || this.phase !== 'playing') return;
     this.releaseAlly(hero);
     const clamped = { x: Math.max(45, Math.min(1555, point.x)), y: Math.max(70, Math.min(855, point.y)) };
-    hero.target = projectPointToPath(clamped).point;
+    hero.target = this.geometry.project(clamped).point;
     hero.commanded = true;
   }
 
@@ -1216,9 +1250,9 @@ export class GameSimulation {
     enemy.bossPhase = nextPhase;
     const eligible = this.towers.filter((tower) => tower.disabledTime <= 0 && !this.pendingBossStrikes.some((strike) => strike.towerUid === tower.uid) && !this.bossTargetHistory.has(tower.uid));
     const candidates = eligible.length > 0 ? eligible : this.towers.filter((tower) => tower.disabledTime <= 0 && !this.pendingBossStrikes.some((strike) => strike.towerUid === tower.uid));
-    const target = [...candidates].sort((a, b) => distance(BUILD_PADS[a.padIndex]!, enemy) - distance(BUILD_PADS[b.padIndex]!, enemy))[0];
+    const target = [...candidates].sort((a, b) => distance(this.geometry.buildPads[a.padIndex]!, enemy) - distance(this.geometry.buildPads[b.padIndex]!, enemy))[0];
     if (target) {
-      const point = BUILD_PADS[target.padIndex]!;
+      const point = this.geometry.buildPads[target.padIndex]!;
       this.pendingBossStrikes.push({ at: this.time + 2.2, towerUid: target.uid });
       this.bossTargetHistory.add(target.uid);
       this.presentAttack('enemy', `enemy:${enemy.uid}`, `tower:${target.uid}`, enemy, point, ENEMIES.bloomlord.accent, 'bloomlord', enemyPresentation.bloomlord.windup, enemyPresentation.bloomlord.travel);
@@ -1226,11 +1260,11 @@ export class GameSimulation {
       this.events.push({ type: 'toast', tone: 'danger', message: 'The Hollow Bloom marks a tower — refit the line!' });
     }
     const escorts = nextPhase === 1 ? 4 : 7;
-    for (let index = 0; index < escorts; index += 1) this.pendingBossEscorts.push({ at: this.time + index * 0.24, enemy: index % 3 === 0 ? 'wisp' : 'skitter', wave: enemy.wave });
+    for (let index = 0; index < escorts; index += 1) this.pendingBossEscorts.push({ at: this.time + index * 0.24, enemy: index % 3 === 0 ? 'wisp' : 'skitter', wave: enemy.wave, routeId: enemy.routeId });
   }
 
   private updateBossStrikes(): void {
-    for (const escort of this.pendingBossEscorts.filter((candidate) => candidate.at <= this.time)) this.spawnEnemy(escort.enemy, escort.wave);
+    for (const escort of this.pendingBossEscorts.filter((candidate) => candidate.at <= this.time)) this.spawnEnemy(escort.enemy, escort.wave, escort.routeId);
     this.pendingBossEscorts = this.pendingBossEscorts.filter((candidate) => candidate.at > this.time);
     for (const strike of this.pendingBossStrikes.filter((candidate) => candidate.at <= this.time)) {
       const tower = this.towers.find((candidate) => candidate.uid === strike.towerUid);
