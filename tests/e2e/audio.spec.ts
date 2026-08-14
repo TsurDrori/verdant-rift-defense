@@ -146,6 +146,15 @@ test('pressure changes never restart the five-minute battle program', async ({ p
 
 test('keeps battle music alive while a cold boss stream buffers', async ({ page }) => {
   await enterAndLoad(page);
+  // A software-rendered CI runner can report the battle cue before the
+  // preceding menu -> battle crossfade has finished releasing its old voice.
+  // Measure the boss handoff only after transport has exactly one live music
+  // source; otherwise that legitimate late menu stop is misattributed to the
+  // intentionally buffered boss source.
+  await expect.poll(() => page.evaluate(() => {
+    const transport = window.__VERDANT_RIFT_AUDIO__!.diagnostics().transport;
+    return transport.sourceStarts - transport.sourceStops;
+  })).toBe(1);
   const beforeStops = await page.evaluate(() => window.__VERDANT_RIFT_AUDIO__!.diagnostics().transport.sourceStops);
   await page.evaluate(() => {
     const nativePlay = HTMLMediaElement.prototype.play;
