@@ -34,10 +34,11 @@ describe('compiled content package contract', () => {
     }
   });
 
-  it('proves multi-route and procedural authoring with the second playable stage', () => {
-    const run = RUN_DEFINITIONS['rootbound-crossing']!;
-    expect(run.map.visual.kind).toBe('procedural');
+  it('proves multi-route painted authoring with the benchmark stage', () => {
+    const run = RUN_DEFINITIONS['moonroot-confluence']!;
+    expect(run.map.visual.kind).toBe('painted');
     expect(run.map.routes.map((route) => route.id)).toEqual(['north', 'south']);
     expect(new Set(run.waves.flatMap((wave) => wave.groups.map((group) => group.route)))).toEqual(new Set(['north', 'south']));
+    expect(run.map.routes.every((route) => route.sections?.some((section) => section.trafficGroup))).toBe(true);
   });
 });

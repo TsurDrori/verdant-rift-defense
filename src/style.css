@@ -493,6 +493,19 @@ html.tactical-context-pause .view-controls {
   .audio-mixer > div { grid-template-columns:repeat(4,1fr); gap:8px; }
 }
 
+/* Ultrawide phone landscape has a real pillarbox beside the 16:9 playfield.
+   Keep the call action in that safe rail and remove non-actionable live intel
+   so the final road and gate remain visible during combat. */
+@media (max-height:620px) and (min-width:621px) and (min-aspect-ratio:2/1) {
+  .wave-card[data-mode="callable"] { right:max(4px,env(safe-area-inset-right)); bottom:max(6px,env(safe-area-inset-bottom)); width:68px; min-height:62px; }
+  .wave-card[data-mode="callable"] .wave-intel { min-height:62px; grid-template-columns:1fr; }
+  .wave-card[data-mode="callable"] .wave-intel > div { display:none; }
+  .wave-card[data-mode="callable"] .call-wave { min-width:68px; min-height:62px; border-left:0; border-radius:10px 10px 24px 10px; }
+  .wave-card[data-mode="callable"] .call-wave span:nth-child(2) { display:none; }
+  .wave-card[data-mode="callable"] .call-icon { font-size:25px; }
+  .wave-card[data-mode="live"] { opacity:0; visibility:hidden; pointer-events:none; }
+}
+
 /* Portrait opens in a touch-sized tactical focus. Native horizontal panning
    preserves Phaser's pointer mapping; overview is always one tap away. */
 @media (max-width: 620px) {

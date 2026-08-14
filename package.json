@@ -6,7 +6,9 @@
   "scripts": {
     "content:sync": "node scripts/compile-content.mjs",
     "content:check": "node scripts/compile-content.mjs --check",
+    "content:proof": "node scripts/compile-content.mjs --check --proof",
     "stage:new": "node scripts/create-stage.mjs",
+    "map:mask": "node scripts/create-map-mask.mjs",
     "dev": "vite --host 0.0.0.0",
     "build": "pnpm content:check && tsc -b && vite build",
     "test:build-assets": "node scripts/validate-build-assets.mjs",

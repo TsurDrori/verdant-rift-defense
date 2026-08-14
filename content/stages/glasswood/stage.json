@@ -4,6 +4,6 @@
     "id": "glasswood", "chapter": 1, "order": 3, "name": "The Glasswood", "mission": "Silence the Sky Choir",
     "description": "Crystal canopies conceal a flight path above the road. Mixed damage and mobile champions will be essential.",
     "objective": "Counter an airborne incursion", "threat": "Heavy air", "reward": 4, "waves": 14,
-    "enemies": ["Wisp swarms", "Crystal heralds"], "mapPosition": { "x": 53, "y": 68 }, "playable": false, "unlockAfter": "rootbound-crossing"
+    "enemies": ["Wisp swarms", "Crystal heralds"], "mapPosition": { "x": 53, "y": 68 }, "playable": false, "unlockAfter": "moonroot-confluence"
   }
 }

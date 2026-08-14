@@ -1,4 +1,5 @@
 import { assetUrl } from '../game/assets/url';
+import { RUN_DEFINITIONS } from '../game/content/generated/stages';
 import { heroSpellsForHero } from '../game/content/heroProgression';
 import type { CampaignProfile } from '../game/campaign/CampaignProfile';
 import {
@@ -80,6 +81,7 @@ export function renderFrontEndContent(state: FrontEndRenderState): string {
 
 function renderCampaign(state: FrontEndRenderState): string {
   const selected = stageById(state.profile.selectedStageId);
+  const stageEconomy = RUN_DEFINITIONS[selected.id]?.economy.difficulties;
   const status = state.previewStageId === selected.id ? 'available' : stageStatus(selected, state.profile);
   const result = state.profile.stages[selected.id];
   const playable = status === 'available' || status === 'cleared';
@@ -117,9 +119,9 @@ function renderCampaign(state: FrontEndRenderState): string {
           </div>
           ${playable ? `
             <div class="difficulty-picker" role="group" aria-label="Difficulty">
-              <button data-action="difficulty" data-difficulty="wanderer" class="${state.difficulty === 'wanderer' ? 'is-selected' : ''}"><b>Wanderer</b><small>25 gate • forgiving foes</small></button>
-              <button data-action="difficulty" data-difficulty="warden" class="${state.difficulty === 'warden' ? 'is-selected' : ''}"><b>Warden</b><small>20 gate • intended tactics</small></button>
-              <button data-action="difficulty" data-difficulty="mythic" class="${state.difficulty === 'mythic' ? 'is-selected' : ''}"><b>Mythic</b><small>15 gate • relentless pressure</small></button>
+              <button data-action="difficulty" data-difficulty="wanderer" class="${state.difficulty === 'wanderer' ? 'is-selected' : ''}"><b>Wanderer</b><small>${stageEconomy?.wanderer.startingLives ?? 25} gate • forgiving foes</small></button>
+              <button data-action="difficulty" data-difficulty="warden" class="${state.difficulty === 'warden' ? 'is-selected' : ''}"><b>Warden</b><small>${stageEconomy?.warden.startingLives ?? 20} gate • intended tactics</small></button>
+              <button data-action="difficulty" data-difficulty="mythic" class="${state.difficulty === 'mythic' ? 'is-selected' : ''}"><b>Mythic</b><small>${stageEconomy?.mythic.startingLives ?? 15} gate • relentless pressure</small></button>
             </div>
             <div class="launch-row"><span><small data-runtime-label>${state.runtimeReady ? 'FIRST CLEAR REWARD' : 'PREPARING THE BATTLEFIELD'}</small><b>${result?.cleared ? 'Claimed' : `${selected.reward} INSIGHT ✦`}</b><em data-runtime-status>${state.runtimeReady ? (state.profile.insightEarned > 0 ? `${state.profile.insightLoadout.length} / ${state.profile.insightEarned} insight equipped` : 'UNLOCKS AFTER YOUR FIRST CLEAR') : 'Loading battle art and animation rigs…'}</em></span><button class="primary-button" data-action="begin" ${state.runtimeReady ? '' : 'disabled'} aria-busy="${state.runtimeReady ? 'false' : 'true'}">ENTER THE RIFT <span>→</span></button></div>
           ` : `<div class="planned-stage"><span>◆</span><div><small>${status === 'planned' ? 'CAMPAIGN EXPANSION' : 'ROUTE SEALED'}</small><b>${status === 'planned' ? 'Stage framework ready; battle content is still in development.' : `Complete ${selected.unlockAfter ? stageById(selected.unlockAfter).name : 'the previous stand'} to reveal this route.`}</b></div></div>`}

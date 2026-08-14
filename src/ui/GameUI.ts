@@ -800,6 +800,7 @@ export class GameUI {
     const alive = snapshot.enemies.filter((enemy) => enemy.alive).length;
     const hidden = !next || snapshot.phase === 'victory' || snapshot.phase === 'defeat';
     const mode = hidden ? 'hidden' : snapshot.waveActive && !snapshot.canCallWave ? 'live' : 'callable';
+    target.dataset.mode = mode;
     // Structural state is deliberately independent of rapidly changing values
     // such as alive count and intermission bonus. Replacing innerHTML while the
     // Call Wave button is under a pointer detaches the interaction target and
@@ -812,7 +813,7 @@ export class GameUI {
       } else if (mode === 'callable') {
         target.innerHTML = `
           <div class="wave-intel"><div><small data-wave-next></small><b data-wave-label></b><p data-wave-intel></p></div>
-          <button class="call-wave" data-action="wave"><span class="call-icon">⚔</span><span>CALL WAVE<small data-wave-bonus></small></span></button></div>`;
+          <button class="call-wave" data-action="wave" aria-label="CALL WAVE"><span class="call-icon">⚔</span><span>CALL WAVE<small data-wave-bonus></small></span></button></div>`;
       }
     }
     if (hidden) { target.classList.remove('is-visible'); return; }

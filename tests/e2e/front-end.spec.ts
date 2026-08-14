@@ -24,7 +24,7 @@ test('front end exposes campaign, hero, progression, guide, and settings surface
   await expect(page.locator('.hero-mastery').getByText('Falling Constellation', { exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: /Campaign/ }).click();
-  await page.getByRole('button', { name: /Stage 2: Rootbound Crossing/ }).click();
+  await page.getByRole('button', { name: /Stage 2: Moonroot Confluence/ }).click();
   await expect(page.getByText('ROUTE SEALED')).toBeVisible();
   await expect(page.getByRole('button', { name: /ENTER THE RIFT/ })).toBeHidden();
   await page.getByRole('button', { name: /Stage 1: The Sunken Way/ }).click();
@@ -46,6 +46,16 @@ test('mobile menu keeps its navigation dock visible while campaign content scrol
   await page.getByRole('button', { name: /Field guide/ }).click();
   await expect(page.getByRole('heading', { name: 'Learn the defense' })).toBeVisible();
   await expect(page.getByText('Ground defenders cannot block or strike flying enemies.')).toBeVisible();
+});
+
+test('campaign difficulty copy comes from the selected stage economy', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('verdant-rift:first-clear', 'true'));
+  await page.goto('/');
+  await page.getByRole('button', { name: /Stage 2: Moonroot Confluence/ }).click();
+  const difficulty = page.getByRole('group', { name: 'Difficulty' });
+  await expect(difficulty).toContainText('18 gate • intended tactics');
+  await expect(difficulty).toContainText('12 gate • relentless pressure');
+  await expect(difficulty).not.toContainText('20 gate • intended tactics');
 });
 
 test('shallow landscape keeps the campaign launch decision in the initial viewport', async ({ page }) => {

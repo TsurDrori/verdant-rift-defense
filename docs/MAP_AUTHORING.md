@@ -36,6 +36,8 @@ Set `visual.kind` to `painted` and provide a stable asset key and a 1600×900 im
 
 The modes share one runtime contract. A campaign can mix authored key-art maps with deterministic procedural maps without special-case simulation code.
 
+For production painted stages, use the explicit semantic-mask workflow in [`PAINTED_MAP_VALIDATION.md`](./PAINTED_MAP_VALIDATION.md). It preserves the full beauty painting while giving the compiler a machine-verifiable road and foundation contract. `pnpm map:mask <stage-id>` creates the locked authoring guide; `pnpm content:proof` emits alignment and strategic evidence.
+
 ## Geometry rules
 
 - The normalized world is 1600×900. Responsive scaling and pointer conversion happen outside this coordinate system.

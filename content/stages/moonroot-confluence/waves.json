@@ -1,0 +1,134 @@
+{
+  "waves": [
+    {
+      "label": "Two Roads Stir",
+      "intel": "Equal skitter scouts reveal both approach roads. Two cheap route-exclusive towers are safer than one greedy choke tower.",
+      "groups": [
+        { "enemy": "skitter", "count": 8, "interval": 0.76, "delay": 0, "route": "north" },
+        { "enemy": "skitter", "count": 8, "interval": 0.76, "delay": 2.2, "route": "south" }
+      ]
+    },
+    {
+      "label": "Reed and Iron",
+      "intel": "Armor marches north while a fast southern pack tests whether both entrances are covered.",
+      "groups": [
+        { "enemy": "marauder", "count": 6, "interval": 1.08, "delay": 0, "route": "north" },
+        { "enemy": "skitter", "count": 14, "interval": 0.46, "delay": 1.4, "route": "south" }
+      ]
+    },
+    {
+      "label": "Lanterns Above",
+      "intel": "Wisps cross both roads and ignore the slowing shallows. Build anti-air coverage beyond the entrance pads.",
+      "groups": [
+        { "enemy": "wisp", "count": 7, "interval": 0.72, "delay": 0, "route": "south" },
+        { "enemy": "wisp", "count": 7, "interval": 0.72, "delay": 2.1, "route": "north" },
+        { "enemy": "skitter", "count": 10, "interval": 0.44, "delay": 3.3, "route": "south" }
+      ]
+    },
+    {
+      "label": "The First Confluence",
+      "intel": "Staggered columns meet in the Veilwater choke. Area damage and blocking gain their first decisive window.",
+      "groups": [
+        { "enemy": "marauder", "count": 9, "interval": 0.82, "delay": 0, "route": "north" },
+        { "enemy": "skitter", "count": 18, "interval": 0.34, "delay": 2.4, "route": "south" },
+        { "enemy": "brute", "count": 2, "interval": 2.2, "delay": 4.3, "route": "north" }
+      ]
+    },
+    {
+      "label": "Lensward Coil",
+      "intel": "Alternating ground packs traverse both sides of the observatory hairpin. Its inner foundations earn two firing windows.",
+      "groups": [
+        { "enemy": "skitter", "count": 16, "interval": 0.32, "delay": 0, "route": "north" },
+        { "enemy": "marauder", "count": 10, "interval": 0.68, "delay": 1.5, "route": "south" },
+        { "enemy": "skitter", "count": 14, "interval": 0.3, "delay": 4.4, "route": "south" }
+      ]
+    },
+    {
+      "label": "Moss in the Shallows",
+      "intel": "Brutes crowd the shared water while a northern rush punishes defenses committed too far downstream.",
+      "groups": [
+        { "enemy": "brute", "count": 4, "interval": 1.7, "delay": 0, "route": "south" },
+        { "enemy": "skitter", "count": 22, "interval": 0.28, "delay": 1.1, "route": "north" },
+        { "enemy": "marauder", "count": 8, "interval": 0.62, "delay": 3.9, "route": "south" }
+      ]
+    },
+    {
+      "label": "False Reflection",
+      "intel": "Aerial pressure ignores the choke while armored ground troops bunch beneath it. Separate anti-air and splash duties.",
+      "groups": [
+        { "enemy": "wisp", "count": 16, "interval": 0.45, "delay": 0, "route": "north" },
+        { "enemy": "marauder", "count": 14, "interval": 0.54, "delay": 1.7, "route": "south" },
+        { "enemy": "brute", "count": 3, "interval": 1.55, "delay": 4.2, "route": "south" }
+      ]
+    },
+    {
+      "label": "Flood at Moonfall",
+      "intel": "Both entrances saturate together. Shared-lane queues become dangerous rather than safely serialized.",
+      "groups": [
+        { "enemy": "skitter", "count": 26, "interval": 0.24, "delay": 0, "route": "north" },
+        { "enemy": "skitter", "count": 26, "interval": 0.24, "delay": 0.65, "route": "south" },
+        { "enemy": "brute", "count": 5, "interval": 1.42, "delay": 2.8, "route": "north" }
+      ]
+    },
+    {
+      "label": "The Drowned Column",
+      "intel": "Durable formations overlap throughout the hairpin. Upgrade the double-pass foundations instead of buying uniform coverage.",
+      "groups": [
+        { "enemy": "marauder", "count": 16, "interval": 0.5, "delay": 0, "route": "south" },
+        { "enemy": "brute", "count": 7, "interval": 1.35, "delay": 1.6, "route": "north" },
+        { "enemy": "wisp", "count": 14, "interval": 0.43, "delay": 3.4, "route": "south" }
+      ]
+    },
+    {
+      "label": "Broken Orrery",
+      "intel": "The formation reverses its earlier pattern: armored south, air north, then skitters through both gates of the choke.",
+      "groups": [
+        { "enemy": "brute", "count": 7, "interval": 1.28, "delay": 0, "route": "south" },
+        { "enemy": "wisp", "count": 18, "interval": 0.4, "delay": 0.8, "route": "north" },
+        { "enemy": "skitter", "count": 24, "interval": 0.24, "delay": 3.1, "route": "north" },
+        { "enemy": "skitter", "count": 18, "interval": 0.26, "delay": 4.3, "route": "south" }
+      ]
+    },
+    {
+      "label": "No Quiet Water",
+      "intel": "Sustained mixed pressure leaves no empty lane. Save hero spells for the true merge, not the first visible pack.",
+      "groups": [
+        { "enemy": "marauder", "count": 18, "interval": 0.46, "delay": 0, "route": "north" },
+        { "enemy": "wisp", "count": 18, "interval": 0.39, "delay": 1.1, "route": "south" },
+        { "enemy": "brute", "count": 8, "interval": 1.2, "delay": 2.4, "route": "south" },
+        { "enemy": "skitter", "count": 28, "interval": 0.21, "delay": 4.6, "route": "north" }
+      ]
+    },
+    {
+      "label": "Sovereign of the Veil",
+      "intel": "The Hollow Bloom advances from Moonweir under a complete two-road escort. The observatory coil is the final killing ground.",
+      "groups": [
+        { "enemy": "bloomlord", "count": 1, "interval": 0, "delay": 0, "route": "north" },
+        { "enemy": "brute", "count": 8, "interval": 1.16, "delay": 1.2, "route": "south" },
+        { "enemy": "marauder", "count": 20, "interval": 0.43, "delay": 2.2, "route": "north" },
+        { "enemy": "wisp", "count": 20, "interval": 0.36, "delay": 3.6, "route": "south" },
+        { "enemy": "skitter", "count": 32, "interval": 0.2, "delay": 5.4, "route": "south" }
+      ]
+    }
+  ],
+  "tacticalPressure": {
+    "6": [
+      { "enemy": "marauder", "count": 6, "interval": 0.52, "delay": 4.8, "route": "north" }
+    ],
+    "8": [
+      { "enemy": "wisp", "count": 8, "interval": 0.4, "delay": 4.7, "route": "south" }
+    ],
+    "9": [
+      { "enemy": "skitter", "count": 14, "interval": 0.22, "delay": 5.2, "route": "north" }
+    ],
+    "10": [
+      { "enemy": "marauder", "count": 7, "interval": 0.46, "delay": 5.4, "route": "south" }
+    ],
+    "11": [
+      { "enemy": "wisp", "count": 9, "interval": 0.36, "delay": 5.8, "route": "north" }
+    ],
+    "12": [
+      { "enemy": "brute", "count": 4, "interval": 1.05, "delay": 6.2, "route": "north" }
+    ]
+  }
+}

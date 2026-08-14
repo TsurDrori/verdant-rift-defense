@@ -3,38 +3,16 @@
   "campaign": {
     "id": "rootbound-crossing",
     "chapter": 1,
-    "order": 2,
+    "order": 6,
     "name": "Rootbound Crossing",
-    "mission": "Break the Briar Host",
-    "description": "Two converging forest roads coil around an ancient wardstone. Enemy groups alternate approaches, demanding coverage that can answer both flanks.",
-    "objective": "Hold both approaches through 10 waves",
-    "threat": "Converging routes",
-    "reward": 3,
+    "mission": "Route Systems Test",
+    "description": "An internal procedural fixture retained for navigation and multi-route regression testing. It is not a production campaign stage.",
+    "objective": "Development fixture",
+    "threat": "Non-production",
+    "reward": 0,
     "waves": 10,
     "enemies": ["Skitter packs", "Marauders", "Wisps", "Brutes"],
-    "mapPosition": { "x": 35, "y": 53 },
-    "playable": true,
-    "unlockAfter": "sunken-way"
-  },
-  "run": {
-    "economy": {
-      "difficulties": {
-        "wanderer": { "startingGold": 390, "startingLives": 25, "enemyHp": 0.82, "enemySpeed": 0.93 },
-        "warden": { "startingGold": 335, "startingLives": 20, "enemyHp": 1, "enemySpeed": 1 },
-        "mythic": { "startingGold": 295, "startingLives": 15, "enemyHp": 1.2, "enemySpeed": 1.09 }
-      },
-      "earlyCall": { "goldPerSecond": 2, "maximumBonus": 42, "heroCooldownRefund": 2.25 },
-      "intermissions": [
-        { "throughWave": 3, "seconds": 18 },
-        { "throughWave": 7, "seconds": 22 },
-        { "throughWave": 10, "seconds": 26 }
-      ]
-    },
-    "objectives": [{ "type": "protect-gate" }, { "type": "survive-waves", "count": 10 }],
-    "modifiers": ["alternating-approaches"],
-    "heroSpawns": {
-      "kael": { "routeId": "north", "progress": 0.58 },
-      "lyra": { "routeId": "south", "progress": 0.61 }
-    }
+    "mapPosition": { "x": 94, "y": 13 },
+    "playable": false
   }
 }

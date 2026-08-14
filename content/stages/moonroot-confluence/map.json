@@ -1,0 +1,90 @@
+{
+  "id": "moonroot-confluence",
+  "title": "Moonroot Confluence",
+  "world": { "width": 1600, "height": 900 },
+  "visual": {
+    "kind": "painted",
+    "assetKey": "environment.moonroot-confluence",
+    "assetPath": "assets/environment/moonroot-confluence-painted-1600.png",
+    "semanticMaskPath": "assets/environment/moonroot-confluence-semantic.png",
+    "semanticMask": {
+      "roadColor": "#ff0000",
+      "padColor": "#00ff00",
+      "tolerancePx": 6,
+      "minRoadRecall": 0.97,
+      "minRoadPrecision": 0.9,
+      "minPadRecall": 0.95,
+      "minPadPrecision": 0.9
+    }
+  },
+  "primaryRouteId": "north",
+  "routes": [
+    {
+      "id": "north",
+      "halfWidth": 36,
+      "centerline": [
+        { "x": -60, "y": 125 }, { "x": 90, "y": 180 }, { "x": 205, "y": 225 },
+        { "x": 330, "y": 265 }, { "x": 470, "y": 260 }, { "x": 575, "y": 310 },
+        { "x": 650, "y": 405 }, { "x": 700, "y": 448 }, { "x": 780, "y": 385 },
+        { "x": 890, "y": 320 }, { "x": 1010, "y": 275 }, { "x": 1140, "y": 250 },
+        { "x": 1270, "y": 250 }, { "x": 1385, "y": 315 }, { "x": 1460, "y": 380 },
+        { "x": 1480, "y": 460 }, { "x": 1450, "y": 535 }, { "x": 1380, "y": 605 },
+        { "x": 1280, "y": 645 }, { "x": 1170, "y": 650 }, { "x": 1070, "y": 640 },
+        { "x": 1010, "y": 700 }, { "x": 1010, "y": 760 }, { "x": 1110, "y": 795 },
+        { "x": 1260, "y": 790 }, { "x": 1410, "y": 785 }, { "x": 1540, "y": 790 },
+        { "x": 1660, "y": 790 }
+      ],
+      "sections": [
+        { "id": "north-approach", "from": 0, "to": 0.277541 },
+        { "id": "north-shared-traffic", "from": 0.277541, "to": 1, "trafficGroup": "moonroot-shared-road" },
+        { "id": "north-moonroot-bridge", "from": 0.277541, "to": 0.351821, "speedMultiplier": 0.72 }
+      ]
+    },
+    {
+      "id": "south",
+      "halfWidth": 36,
+      "centerline": [
+        { "x": -60, "y": 740 }, { "x": 80, "y": 715 }, { "x": 215, "y": 700 },
+        { "x": 340, "y": 675 }, { "x": 460, "y": 625 }, { "x": 570, "y": 555 },
+        { "x": 640, "y": 485 }, { "x": 700, "y": 448 }, { "x": 780, "y": 385 },
+        { "x": 890, "y": 320 }, { "x": 1010, "y": 275 }, { "x": 1140, "y": 250 },
+        { "x": 1270, "y": 250 }, { "x": 1385, "y": 315 }, { "x": 1460, "y": 380 },
+        { "x": 1480, "y": 460 }, { "x": 1450, "y": 535 }, { "x": 1380, "y": 605 },
+        { "x": 1280, "y": 645 }, { "x": 1170, "y": 650 }, { "x": 1070, "y": 640 },
+        { "x": 1010, "y": 700 }, { "x": 1010, "y": 760 }, { "x": 1110, "y": 795 },
+        { "x": 1260, "y": 790 }, { "x": 1410, "y": 785 }, { "x": 1540, "y": 790 },
+        { "x": 1660, "y": 790 }
+      ],
+      "sections": [
+        { "id": "south-approach", "from": 0, "to": 0.272248 },
+        { "id": "south-shared-traffic", "from": 0.272248, "to": 1, "trafficGroup": "moonroot-shared-road" },
+        { "id": "south-moonroot-bridge", "from": 0.272248, "to": 0.347073, "speedMultiplier": 0.72 }
+      ]
+    }
+  ],
+  "buildPads": [
+    { "id": "north-watch", "x": 198, "y": 142, "radius": 37 },
+    { "id": "north-bend", "x": 480, "y": 200, "radius": 37 },
+    { "id": "upper-lens", "x": 939, "y": 243, "radius": 37 },
+    { "id": "observatory-high", "x": 1184, "y": 176, "radius": 37 },
+    { "id": "east-arc", "x": 1417, "y": 280, "radius": 37 },
+    { "id": "moonroot-heart", "x": 1108, "y": 498, "radius": 37 },
+    { "id": "inner-return", "x": 923, "y": 634, "radius": 37 },
+    { "id": "double-pass-ward", "x": 1193, "y": 698, "radius": 37 },
+    { "id": "south-watch", "x": 68, "y": 770, "radius": 37 }
+  ],
+  "markers": {
+    "entrances": [
+      { "routeId": "north", "x": 75, "y": 174, "label": "MOONWEIR ROAD" },
+      { "routeId": "south", "x": 75, "y": 716, "label": "REEDMARCH ROAD" }
+    ],
+    "gate": { "x": 1540, "y": 790, "label": "WARD" }
+  },
+  "strategicRequirements": {
+    "baseTowerRanges": [126, 158, 170, 176],
+    "minDoublePassPads": 1,
+    "minMultiRoutePads": 2,
+    "minDistinctProfiles": 4,
+    "maxDominatedPads": 1
+  }
+}

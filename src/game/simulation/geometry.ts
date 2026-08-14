@@ -17,6 +17,13 @@ export interface PathFrame extends Vec2 {
   normal: Vec2;
 }
 
+export interface PathTrafficPosition {
+  /** Occupants with the same key participate in one lane queue. */
+  key: string;
+  /** Arc-length position local to the shared section (world units). */
+  distance: number;
+}
+
 interface RouteCache {
   route: BattleRouteDefinition;
   segmentLengths: readonly number[];
@@ -73,6 +80,81 @@ export class PathGeometry {
   route(id = this.primaryRouteId): BattleRouteDefinition { return this.cache(id).route; }
   length(id = this.primaryRouteId): number { return this.cache(id).length; }
   halfWidth(id = this.primaryRouteId): number { return this.cache(id).route.halfWidth; }
+
+  /**
+   * Resolves route-local progress into an occupancy domain. By default every
+   * route is isolated. Authored traffic groups deliberately join coincident
+   * downstream sections from different entrances into one deterministic queue.
+   */
+  trafficPosition(progress: number, routeId = this.primaryRouteId): PathTrafficPosition {
+    const cache = this.cache(routeId);
+    const clamped = Math.max(0, Math.min(1, progress));
+    const section = cache.route.sections?.find((candidate) => candidate.trafficGroup
+      && clamped >= candidate.from
+      && (clamped < candidate.to || (candidate.to === 1 && clamped === 1)));
+    if (!section?.trafficGroup) return { key: `route:${routeId}`, distance: clamped * cache.length };
+    return { key: `shared:${section.trafficGroup}`, distance: (clamped - section.from) * cache.length };
+  }
+
+  /**
+   * Expresses a route position in a specific traffic domain, including just
+   * outside a shared section. The signed distance is what lets the simulation
+   * reserve clearance while an actor crosses a merge/split boundary instead
+   * of discovering an overlap one fixed tick later.
+   */
+  trafficPositionForKey(progress: number, routeId: string, key: string): PathTrafficPosition | undefined {
+    const cache = this.cache(routeId);
+    const clamped = Math.max(0, Math.min(1, progress));
+    if (key === `route:${routeId}`) return { key, distance: clamped * cache.length };
+    if (!key.startsWith('shared:')) return undefined;
+    const trafficGroup = key.slice('shared:'.length);
+    const section = cache.route.sections?.find((candidate) => candidate.trafficGroup === trafficGroup);
+    return section ? { key, distance: (clamped - section.from) * cache.length } : undefined;
+  }
+
+  /**
+   * Returns the queue domain used near a junction. Approaching actors reserve
+   * their place shortly before coincident centerlines meet; otherwise two
+   * synchronized entrances can overlap at the exact tick they cross `from`.
+   */
+  trafficQueuePosition(progress: number, routeId = this.primaryRouteId, junctionMargin = 0): PathTrafficPosition {
+    const current = this.trafficPosition(progress, routeId);
+    if (current.key.startsWith('shared:') || junctionMargin <= 0) return current;
+    const cache = this.cache(routeId);
+    const clamped = Math.max(0, Math.min(1, progress));
+    const arc = clamped * cache.length;
+    const nearby = cache.route.sections
+      ?.filter((section) => section.trafficGroup)
+      .map((section) => {
+        const fromArc = section.from * cache.length;
+        const toArc = section.to * cache.length;
+        const boundaryGap = arc < fromArc ? fromArc - arc : arc > toArc ? arc - toArc : 0;
+        return { section, boundaryGap };
+      })
+      .filter(({ boundaryGap }) => boundaryGap <= junctionMargin)
+      .sort((a, b) => a.boundaryGap - b.boundaryGap)[0];
+    if (!nearby?.section.trafficGroup) return current;
+    return {
+      key: `shared:${nearby.section.trafficGroup}`,
+      distance: (clamped - nearby.section.from) * cache.length,
+    };
+  }
+
+  /**
+   * Returns the strongest authored terrain modifier at this progress. Flying
+   * units ignore terrain unless the section opts in with affectsFlying.
+   */
+  terrainSpeedMultiplier(progress: number, routeId = this.primaryRouteId, flying = false): number {
+    const clamped = Math.max(0, Math.min(1, progress));
+    const multipliers = this.cache(routeId).route.sections
+      ?.filter((section) => section.speedMultiplier !== undefined
+        && (!flying || section.affectsFlying === true)
+        && clamped >= section.from
+        && (clamped < section.to || (section.to === 1 && clamped === 1)))
+      .map((section) => section.speedMultiplier!)
+      ?? [];
+    return multipliers.length === 0 ? 1 : Math.min(...multipliers);
+  }
 
   frame(progress: number, routeId = this.primaryRouteId): PathFrame {
     const cache = this.cache(routeId);

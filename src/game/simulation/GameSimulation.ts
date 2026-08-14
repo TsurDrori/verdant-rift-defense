@@ -23,6 +23,12 @@ const HERO_GUARD_RADIUS: Readonly<Record<HeroId, { reserve: number; commanded: n
   lyra: { reserve: 95, commanded: 132 },
 };
 
+// Derive merge reservation from authored bodies so adding a larger ground unit
+// cannot silently make synchronized entrances overlap at a junction.
+const SHARED_TRAFFIC_JUNCTION_MARGIN = Math.max(
+  ...Object.values(ENEMIES).filter((enemy) => !enemy.flying).map((enemy) => enemy.radius),
+) * 2 + COMBAT_BALANCE.lanes.footprintPadding + 2;
+
 const towerPresentation: Record<TowerId, { windup: number; travel: number }> = {
   thorn: { windup: 0.132, travel: 0.11 },
   ember: { windup: 0.22, travel: 0.24 },
@@ -621,14 +627,23 @@ export class GameSimulation {
     }
   }
 
-  private laneProgressLimit(enemy: EnemyState, laneOffset: number, desiredProgress: number, groundOrder: readonly EnemyState[], orderIndex: number): number {
+  private laneProgressLimit(enemy: EnemyState, laneOffset: number, desiredProgress: number, groundOrder: readonly EnemyState[], orderIndex: number, trafficKey?: string): number {
     let limit = desiredProgress;
+    const traffic = trafficKey
+      ? this.geometry.trafficPositionForKey(enemy.progress, enemy.routeId, trafficKey)
+      : this.geometry.trafficPosition(enemy.progress, enemy.routeId);
+    if (!traffic) return limit;
     for (let index = orderIndex - 1; index >= 0; index -= 1) {
       const ahead = groundOrder[index]!;
-      if (!ahead.alive || ahead.uid === enemy.uid || ahead.progress <= enemy.progress) continue;
-      if (ahead.routeId !== enemy.routeId) continue;
+      if (!ahead.alive || ahead.uid === enemy.uid) continue;
+      const aheadTraffic = trafficKey
+        ? this.geometry.trafficPositionForKey(ahead.progress, ahead.routeId, trafficKey)
+        : this.geometry.trafficPosition(ahead.progress, ahead.routeId);
+      if (!aheadTraffic) continue;
+      const sharedTie = traffic.key.startsWith('shared:') && aheadTraffic.distance === traffic.distance;
+      if (aheadTraffic.key !== traffic.key || aheadTraffic.distance < traffic.distance || (aheadTraffic.distance === traffic.distance && !sharedTie)) continue;
       const pathLength = this.geometry.length(enemy.routeId);
-      const centerGap = (ahead.progress - enemy.progress) * pathLength;
+      const centerGap = aheadTraffic.distance - traffic.distance;
       const lateralGap = Math.abs(laneOffset - ahead.laneOffset);
       const sameBandPadding = lateralGap < 1 ? COMBAT_BALANCE.lanes.footprintPadding : 0;
       // Arc distance is slightly longer than the rendered chord through a
@@ -637,16 +652,25 @@ export class GameSimulation {
       const clearance = ENEMIES[enemy.type].radius + ENEMIES[ahead.type].radius + sameBandPadding + 1.25;
       if (centerGap > clearance + ENEMIES[enemy.type].speed / 30) break;
       const longitudinalClearance = Math.sqrt(Math.max(0, clearance * clearance - lateralGap * lateralGap));
-      limit = Math.min(limit, ahead.progress - longitudinalClearance / pathLength);
+      const availableTravel = Math.max(0, centerGap - longitudinalClearance);
+      limit = Math.min(limit, enemy.progress + availableTravel / pathLength);
     }
     return Math.max(enemy.progress, limit);
   }
 
-  private laneChangeIsClear(enemy: EnemyState, laneOffset: number, groundOrder: readonly EnemyState[]): boolean {
+  private laneChangeIsClear(enemy: EnemyState, laneOffset: number, groundOrder: readonly EnemyState[], trafficKey?: string): boolean {
+    const traffic = trafficKey
+      ? this.geometry.trafficPositionForKey(enemy.progress, enemy.routeId, trafficKey)
+      : this.geometry.trafficPosition(enemy.progress, enemy.routeId);
+    if (!traffic) return true;
     return groundOrder.every((other) => {
       if (!other.alive || other.uid === enemy.uid) return true;
-      if (other.routeId !== enemy.routeId) return true;
-      const longitudinalGap = Math.abs(other.progress - enemy.progress) * this.geometry.length(enemy.routeId);
+      const otherTraffic = trafficKey
+        ? this.geometry.trafficPositionForKey(other.progress, other.routeId, trafficKey)
+        : this.geometry.trafficPosition(other.progress, other.routeId);
+      if (!otherTraffic) return true;
+      if (otherTraffic.key !== traffic.key) return true;
+      const longitudinalGap = Math.abs(otherTraffic.distance - traffic.distance);
       const lateralGap = Math.abs(laneOffset - other.laneOffset);
       const sameBandPadding = lateralGap < 1 ? COMBAT_BALANCE.lanes.footprintPadding : 0;
       const clearance = ENEMIES[enemy.type].radius + ENEMIES[other.type].radius + sameBandPadding + 1.25;
@@ -655,20 +679,36 @@ export class GameSimulation {
     });
   }
 
-  private advanceEnemyOnRoute(enemy: EnemyState, dt: number, groundOrder: readonly EnemyState[], orderIndex: number): void {
+  private advanceEnemyOnRoute(enemy: EnemyState, dt: number, groundOrders: Map<string, EnemyState[]>): void {
     const definition = ENEMIES[enemy.type];
     const speedScale = 1 - Math.min(0.65, enemy.slow);
-    const desiredProgress = enemy.progress + definition.speed * this.difficultySpeed * speedScale * dt / this.geometry.length(enemy.routeId);
+    const terrainScale = this.geometry.terrainSpeedMultiplier(enemy.progress, enemy.routeId, Boolean(definition.flying));
+    const desiredProgress = enemy.progress + definition.speed * this.difficultySpeed * speedScale * terrainScale * dt / this.geometry.length(enemy.routeId);
     if (!definition.flying) {
-      const currentLimit = this.laneProgressLimit(enemy, enemy.laneTarget, desiredProgress, groundOrder, orderIndex);
+      const currentTraffic = this.geometry.trafficQueuePosition(enemy.progress, enemy.routeId, SHARED_TRAFFIC_JUNCTION_MARGIN);
+      const desiredTraffic = this.geometry.trafficQueuePosition(desiredProgress, enemy.routeId, SHARED_TRAFFIC_JUNCTION_MARGIN);
+      const trafficKey = desiredTraffic.key;
+      const groundOrder = groundOrders.get(trafficKey) ?? [];
+      const traffic = this.geometry.trafficPositionForKey(enemy.progress, enemy.routeId, trafficKey) ?? currentTraffic;
+      let orderIndex = groundOrder.findIndex((other) => other.uid === enemy.uid);
+      if (orderIndex < 0) {
+        orderIndex = groundOrder.findIndex((other) => {
+          const otherTraffic = this.geometry.trafficPositionForKey(other.progress, other.routeId, trafficKey);
+          if (!otherTraffic) return false;
+          return otherTraffic.distance < traffic.distance
+            || (otherTraffic.distance === traffic.distance && other.uid > enemy.uid);
+        });
+        if (orderIndex < 0) orderIndex = groundOrder.length;
+      }
+      const currentLimit = this.laneProgressLimit(enemy, enemy.laneTarget, desiredProgress, groundOrder, orderIndex, trafficKey);
       let bestLane = enemy.laneTarget;
       let bestLimit = currentLimit;
       if (enemy.engagedAllyUid !== null) {
         bestLane = COMBAT_BALANCE.lanes.combatOffset;
       } else {
         for (const lane of COMBAT_BALANCE.lanes.offsets) {
-          if (lane !== enemy.laneTarget && !this.laneChangeIsClear(enemy, lane, groundOrder)) continue;
-          const candidate = this.laneProgressLimit(enemy, lane, desiredProgress, groundOrder, orderIndex);
+          if (lane !== enemy.laneTarget && !this.laneChangeIsClear(enemy, lane, groundOrder, trafficKey)) continue;
+          const candidate = this.laneProgressLimit(enemy, lane, desiredProgress, groundOrder, orderIndex, trafficKey);
           const laneIsOrdinary = (COMBAT_BALANCE.lanes.spawnOffsets as readonly number[]).includes(lane);
           const bestIsOrdinary = (COMBAT_BALANCE.lanes.spawnOffsets as readonly number[]).includes(bestLane);
           // A fixed tick advances sub-pixel distances, so lane-choice hysteresis
@@ -688,7 +728,20 @@ export class GameSimulation {
         const lateralStep = Math.min(Math.abs(lateralGap), COMBAT_BALANCE.lanes.lateralSpeed * dt);
         if (lateralStep > 0) enemy.laneOffset += Math.sign(lateralGap) * lateralStep;
       }
-      enemy.progress = Math.min(1, this.laneProgressLimit(enemy, enemy.laneOffset, desiredProgress, groundOrder, orderIndex));
+      enemy.progress = Math.min(1, this.laneProgressLimit(enemy, enemy.laneOffset, desiredProgress, groundOrder, orderIndex, trafficKey));
+      const nextTraffic = this.geometry.trafficQueuePosition(enemy.progress, enemy.routeId, SHARED_TRAFFIC_JUNCTION_MARGIN);
+      if (nextTraffic.key !== currentTraffic.key) {
+        const oldOrder = groundOrders.get(currentTraffic.key);
+        if (oldOrder) {
+          const oldIndex = oldOrder.findIndex((candidate) => candidate.uid === enemy.uid);
+          if (oldIndex >= 0) oldOrder.splice(oldIndex, 1);
+        }
+        const nextOrder = groundOrders.get(nextTraffic.key) ?? [];
+        if (!nextOrder.some((candidate) => candidate.uid === enemy.uid)) nextOrder.push(enemy);
+        nextOrder.sort((a, b) => this.geometry.trafficQueuePosition(b.progress, b.routeId, SHARED_TRAFFIC_JUNCTION_MARGIN).distance
+          - this.geometry.trafficQueuePosition(a.progress, a.routeId, SHARED_TRAFFIC_JUNCTION_MARGIN).distance || a.uid - b.uid);
+        groundOrders.set(nextTraffic.key, nextOrder);
+      }
     } else {
       enemy.progress = Math.min(1, desiredProgress);
     }
@@ -701,10 +754,18 @@ export class GameSimulation {
     // Build lane occupancy once per tick. The previous implementation searched
     // and sorted the whole enemy array for every actor (O(n² log n)), exactly
     // the kind of density-dependent work that turns burst waves into stalls.
-    const groundOrder = this.enemies
-      .filter((candidate) => candidate.alive && !ENEMIES[candidate.type].flying)
-      .sort((a, b) => b.progress - a.progress || a.uid - b.uid);
-    const groundOrderIndex = new Map(groundOrder.map((enemy, index) => [enemy.uid, index]));
+    const groundOrders = new Map<string, EnemyState[]>();
+    for (const enemy of this.enemies) {
+      if (!enemy.alive || ENEMIES[enemy.type].flying) continue;
+      const key = this.geometry.trafficQueuePosition(enemy.progress, enemy.routeId, SHARED_TRAFFIC_JUNCTION_MARGIN).key;
+      const order = groundOrders.get(key) ?? [];
+      order.push(enemy);
+      groundOrders.set(key, order);
+    }
+    for (const order of groundOrders.values()) {
+      order.sort((a, b) => this.geometry.trafficQueuePosition(b.progress, b.routeId, SHARED_TRAFFIC_JUNCTION_MARGIN).distance
+        - this.geometry.trafficQueuePosition(a.progress, a.routeId, SHARED_TRAFFIC_JUNCTION_MARGIN).distance || a.uid - b.uid);
+    }
     for (const enemy of this.enemies) {
       if (!enemy.alive) continue;
       const definition = ENEMIES[enemy.type];
@@ -770,7 +831,7 @@ export class GameSimulation {
         this.presentAttack('enemy', `enemy:${enemy.uid}`, this.allyRef(passingHero), enemy, passingHero, definition.accent, enemy.type, timing.windup, timing.travel);
         this.hitAlly(passingHero, enemy, definition.attackDamage);
       }
-      this.advanceEnemyOnRoute(enemy, dt, groundOrder, groundOrderIndex.get(enemy.uid) ?? groundOrder.length);
+      this.advanceEnemyOnRoute(enemy, dt, groundOrders);
       if (enemy.progress >= 1) {
         this.releaseEnemy(enemy);
         enemy.alive = false;

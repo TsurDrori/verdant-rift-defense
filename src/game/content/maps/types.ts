@@ -8,6 +8,30 @@ export interface BattleRouteDefinition {
   id: string;
   halfWidth: number;
   centerline: readonly Vec2[];
+  /**
+   * Optional gameplay metadata layered over normalized route progress. Sections
+   * may overlap: one can define shared traffic while another defines terrain.
+   * Routes without sections retain the original isolated, full-speed behavior.
+   */
+  sections?: readonly BattleRouteSection[];
+}
+
+export interface BattleRouteSection {
+  id: string;
+  /** Inclusive normalized route progress. */
+  from: number;
+  /** Exclusive normalized route progress, except that 1 includes the gate. */
+  to: number;
+  /**
+   * Ground enemies on any route with the same traffic group share lane
+   * occupancy. Their authored centerlines must describe the same corridor and
+   * direction over this section.
+   */
+  trafficGroup?: string;
+  /** Multiplier applied while an enemy is inside this terrain section. */
+  speedMultiplier?: number;
+  /** Terrain affects ground traffic only unless explicitly enabled for air. */
+  affectsFlying?: boolean;
 }
 
 export interface BattleBuildPad extends Vec2 {
@@ -19,6 +43,18 @@ export interface PaintedMapVisual {
   kind: 'painted';
   assetKey: string;
   assetPath: string;
+  /** Explicit authoring-layer export; the beauty painting is never color-inferred. */
+  semanticMaskPath?: string;
+  semanticMask?: {
+    roadColor?: string;
+    padColor?: string;
+    tolerancePx?: number;
+    colorTolerance?: number;
+    minRoadRecall?: number;
+    minRoadPrecision?: number;
+    minPadRecall?: number;
+    minPadPrecision?: number;
+  };
 }
 
 export interface ProceduralMapVisual {
@@ -48,6 +84,14 @@ export interface BattleMapDefinition {
   /** Compatibility alias for the primary route. New code uses routes. */
   route: BattleRouteDefinition;
   buildPads: readonly BattleBuildPad[];
+  /** Optional compile-time quality gates for production benchmark layouts. */
+  strategicRequirements?: {
+    baseTowerRanges?: readonly number[];
+    minDoublePassPads?: number;
+    minMultiRoutePads?: number;
+    minDistinctProfiles?: number;
+    maxDominatedPads?: number;
+  };
   markers: {
     entrances: readonly (BattleMapMarker & { routeId: string })[];
     /** Compatibility alias for the primary entrance. */

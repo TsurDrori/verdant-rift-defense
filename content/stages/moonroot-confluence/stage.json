@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "campaign": {
+    "id": "moonroot-confluence",
+    "chapter": 1,
+    "order": 2,
+    "name": "Moonroot Confluence",
+    "mission": "Hold the Drowned Observatory",
+    "description": "Two ancient forest roads meet on a moonlit stone bridge, wind around a ruined observatory, and coil past Moonroot's crystal ward before reaching the gate.",
+    "objective": "Master both approaches and survive 12 converging waves",
+    "threat": "Shared choke and double-pass hairpin",
+    "reward": 5,
+    "waves": 12,
+    "enemies": ["Skitter packs", "Marauders", "Gloam Wisps", "Mossback Brutes", "The Hollow Bloom"],
+    "mapPosition": { "x": 35, "y": 53 },
+    "playable": true,
+    "unlockAfter": "sunken-way"
+  },
+  "run": {
+    "economy": {
+      "difficulties": {
+        "wanderer": { "startingGold": 370, "startingLives": 25, "enemyHp": 0.84, "enemySpeed": 0.94 },
+        "warden": { "startingGold": 305, "startingLives": 18, "enemyHp": 1.04, "enemySpeed": 1.03 },
+        "mythic": { "startingGold": 260, "startingLives": 12, "enemyHp": 1.27, "enemySpeed": 1.12 }
+      },
+      "earlyCall": { "goldPerSecond": 2.35, "maximumBonus": 48, "heroCooldownRefund": 2.5 },
+      "intermissions": [
+        { "throughWave": 3, "seconds": 17 },
+        { "throughWave": 7, "seconds": 21 },
+        { "throughWave": 10, "seconds": 24 },
+        { "throughWave": 12, "seconds": 28 }
+      ]
+    },
+    "objectives": [
+      { "type": "protect-gate" },
+      { "type": "survive-waves", "count": 12 }
+    ],
+    "modifiers": ["alternating-approaches"],
+    "heroSpawns": {
+      "kael": { "routeId": "north", "progress": 0.32 },
+      "lyra": { "routeId": "south", "progress": 0.38 }
+    }
+  }
+}

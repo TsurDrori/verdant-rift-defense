@@ -115,18 +115,27 @@ test('keeps primary controls visible at a phone landscape viewport', async ({ pa
   await expect(page.getByRole('button', { name: 'Toggle battle speed' })).toBeVisible();
   const viewportProof = await page.evaluate(() => {
     const selectors = ['[aria-label="Battle status"]', '[aria-label="Toggle battle speed"]', '[data-wave-card]'];
-    return selectors.map((selector) => {
+    const controls = selectors.map((selector) => {
       const rect = document.querySelector(selector)?.getBoundingClientRect();
       return rect ? { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right } : null;
     });
+    const canvas = document.querySelector('canvas')?.getBoundingClientRect();
+    const wave = document.querySelector('[data-wave-card]')?.getBoundingClientRect();
+    return {
+      controls,
+      waveBesidePlayfield: Boolean(canvas && wave && wave.left >= canvas.right - 2),
+      waveWidth: wave?.width ?? 0,
+    };
   });
-  for (const rect of viewportProof) {
+  for (const rect of viewportProof.controls) {
     expect(rect).not.toBeNull();
     expect(rect!.top).toBeGreaterThanOrEqual(0);
     expect(rect!.bottom).toBeLessThanOrEqual(390);
     expect(rect!.right).toBeGreaterThan(0);
     expect(rect!.left).toBeLessThan(844);
   }
+  expect(viewportProof.waveBesidePlayfield).toBe(true);
+  expect(viewportProof.waveWidth).toBeLessThanOrEqual(70);
   expect(await page.locator('#app').evaluate((element) => element.scrollTop)).toBe(0);
 });
 

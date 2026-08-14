@@ -321,6 +321,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private createAmbientFx(): void {
+    if (this.controller.run.stageId === 'moonroot-confluence') this.createMoonrootAmbientFx();
     const particles = this.add.particles(0, 0, '__DEFAULT', {
       x: { min: 0, max: this.controller.run.map.world.width }, y: { min: 0, max: this.controller.run.map.world.height }, quantity: 1, frequency: 310,
       lifespan: { min: 1900, max: 3500 }, speedY: { min: -14, max: -4 }, speedX: { min: -5, max: 5 },
@@ -328,6 +329,107 @@ export class BattleScene extends Phaser.Scene {
       blendMode: Phaser.BlendModes.ADD,
     }).setDepth(8);
     particles.setAlpha(0.7);
+  }
+
+  /**
+   * Painting-specific life layered beneath units and combat telegraphs. These
+   * accents follow landmarks that already exist in the Moonroot beauty pass;
+   * they never redraw or contradict authored road geometry.
+   */
+  private createMoonrootAmbientFx(): void {
+    const reducedMotion = document.documentElement.classList.contains('reduce-motion');
+    const water = this.add.container(0, 0).setDepth(0.9).setName('moonroot-water-motion');
+
+    // Slow, broken reflections make the central river read as flowing without
+    // putting a bright ribbon across either approach or the bridge choke.
+    const currentSpecs = [
+      { x: 650, y: 38, width: 78, angle: -7, delay: 0 },
+      { x: 668, y: 118, width: 96, angle: 8, delay: 390 },
+      { x: 662, y: 201, width: 72, angle: -10, delay: 760 },
+      { x: 689, y: 304, width: 86, angle: 5, delay: 1120 },
+      { x: 674, y: 807, width: 90, angle: 4, delay: 270 },
+      { x: 689, y: 872, width: 70, angle: -6, delay: 920 },
+    ];
+    for (const spec of currentSpecs) {
+      const glint = this.add.ellipse(spec.x, spec.y, spec.width, 3, 0x8de9dd, 0.18)
+        .setRotation(Phaser.Math.DegToRad(spec.angle)).setBlendMode(Phaser.BlendModes.ADD);
+      water.add(glint);
+      if (!reducedMotion) {
+        this.tweens.add({
+          targets: glint,
+          x: spec.x + 18,
+          y: spec.y + 12,
+          alpha: { from: 0.05, to: 0.28 },
+          scaleX: { from: 0.72, to: 1.16 },
+          duration: 2500,
+          delay: spec.delay,
+          yoyo: true,
+          repeat: -1,
+          ease: 'Sine.InOut',
+        });
+      }
+    }
+
+    const waterfallSpecs = [
+      { x: 901, y: 113, width: 42, height: 70 },
+      { x: 1307, y: 342, width: 35, height: 52 },
+      { x: 1122, y: 854, width: 40, height: 65 },
+    ];
+    for (const [index, spec] of waterfallSpecs.entries()) {
+      const veil = this.add.ellipse(spec.x, spec.y, spec.width, spec.height, 0x87e8ef, 0.1)
+        .setBlendMode(Phaser.BlendModes.ADD).setDepth(0.92).setName(`moonroot-waterfall-${index + 1}`);
+      const mist = this.add.particles(spec.x, spec.y + spec.height * 0.32, '__DEFAULT', {
+        quantity: reducedMotion ? 0 : 1,
+        frequency: 540 + index * 130,
+        lifespan: { min: 850, max: 1450 },
+        speedX: { min: -9, max: 9 },
+        speedY: { min: -7, max: -2 },
+        alpha: { start: 0.24, end: 0 },
+        scale: { start: 0.025, end: 0.08 },
+        tint: [0xa6f5ef, 0x6dc5d3],
+        blendMode: Phaser.BlendModes.ADD,
+      }).setDepth(0.93).setName(`moonroot-waterfall-mist-${index + 1}`);
+      if (!reducedMotion) {
+        this.tweens.add({
+          targets: veil,
+          alpha: { from: 0.05, to: 0.19 },
+          scaleY: { from: 0.9, to: 1.08 },
+          duration: 1050 + index * 170,
+          yoyo: true,
+          repeat: -1,
+          ease: 'Sine.InOut',
+        });
+      }
+      water.add([veil, mist]);
+    }
+
+    // The exit ward is the map's visual destination. A restrained three-beat
+    // pulse links its painted crystals without competing with tower/spell FX.
+    const ward = this.add.container(0, 0).setDepth(1.1).setName('moonroot-ward-pulse');
+    const crystalPoints = [
+      { x: 1510, y: 611, radius: 24, delay: 0 },
+      { x: 1565, y: 733, radius: 19, delay: 260 },
+      { x: 1460, y: 674, radius: 13, delay: 520 },
+    ];
+    for (const crystal of crystalPoints) {
+      const aura = this.add.circle(crystal.x, crystal.y, crystal.radius, 0xa774ff, 0.05)
+        .setStrokeStyle(1.5, 0xd9c5ff, 0.15).setBlendMode(Phaser.BlendModes.ADD);
+      ward.add(aura);
+      if (!reducedMotion) {
+        this.tweens.add({
+          targets: aura,
+          alpha: { from: 0.025, to: 0.22 },
+          scale: { from: 0.72, to: 1.28 },
+          duration: 1250,
+          delay: crystal.delay,
+          hold: 520,
+          yoyo: true,
+          repeat: -1,
+          repeatDelay: 720,
+          ease: 'Sine.InOut',
+        });
+      }
+    }
   }
 
   private createRouteCues(): void {

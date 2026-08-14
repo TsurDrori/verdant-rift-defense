@@ -1,10 +1,21 @@
-import { access, readFile, readdir, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import {
+  analyzeStrategicGeometry,
+  compareSemanticMask,
+  decodePng,
+  encodePng,
+  validateRouteTopology,
+  validateStrategicMetadata,
+  validateStrategicRequirements,
+} from './lib/map-analysis.mjs';
 
 const project = resolve(import.meta.dirname, '..');
 const contentRoot = resolve(project, 'content/stages');
 const targetPath = resolve(project, 'src/game/content/generated/stages.ts');
 const check = process.argv.includes('--check');
+const proof = process.argv.includes('--proof');
+const proofRoot = resolve(project, 'artifacts/content-proof');
 const enemyIds = new Set(['skitter', 'marauder', 'wisp', 'brute', 'bloomlord']);
 const modifierIds = new Set(['alternating-approaches']);
 const idPattern = /^[a-z][a-z0-9-]*$/;
@@ -69,6 +80,10 @@ async function validateMap(map, source) {
     }
     if (routeLength(route) < 700) fail(source, `route '${route.id}' is too short for a full battlefield.`);
   }
+  const topology = validateRouteTopology(map);
+  for (const message of topology.errors) fail(source, message);
+  for (const message of topology.warnings) console.warn(`${source}: topology warning: ${message}.`);
+  for (const message of validateStrategicMetadata(map)) fail(source, message);
   if (!routeIds.has(map.primaryRouteId)) fail(source, 'map.primaryRouteId must reference a route.');
   if (!Array.isArray(map.buildPads) || map.buildPads.length < 4) fail(source, 'map.buildPads requires at least four pads.');
   const padIds = new Set();
@@ -112,6 +127,36 @@ async function validateMap(map, source) {
       if (error instanceof Error && error.message.startsWith(source)) throw error;
       fail(source, `painted asset '${map.visual.assetPath}' does not exist in public/.`);
     }
+    if (map.visual.semanticMaskPath) {
+      if (!/^assets\/[a-z0-9./-]+\.png$/i.test(map.visual.semanticMaskPath) || map.visual.semanticMaskPath.includes('..')) fail(source, 'visual.semanticMaskPath must be a PNG below public/assets/.');
+      const maskPath = resolve(project, 'public', map.visual.semanticMaskPath);
+      const config = map.visual.semanticMask ?? {};
+      if (config.tolerancePx !== undefined && (!Number.isInteger(config.tolerancePx) || config.tolerancePx < 0 || config.tolerancePx > 32)) fail(source, 'visual.semanticMask.tolerancePx must be an integer from 0..32.');
+      if (config.colorTolerance !== undefined && (!Number.isInteger(config.colorTolerance) || config.colorTolerance < 0 || config.colorTolerance > 64)) fail(source, 'visual.semanticMask.colorTolerance must be an integer from 0..64.');
+      let comparison;
+      try {
+        const decoded = decodePng(await readFile(maskPath));
+        comparison = compareSemanticMask(map, decoded, config);
+      } catch (error) {
+        fail(source, `semantic mask '${map.visual.semanticMaskPath}' is invalid: ${error instanceof Error ? error.message : String(error)}.`);
+      }
+      const thresholds = {
+        minRoadRecall: config.minRoadRecall ?? 0.97,
+        minRoadPrecision: config.minRoadPrecision ?? 0.9,
+        minPadRecall: config.minPadRecall ?? 0.95,
+        minPadPrecision: config.minPadPrecision ?? 0.9,
+      };
+      for (const [key, value] of Object.entries(thresholds)) if (!finite(value) || value < 0 || value > 1) fail(source, `visual.semanticMask.${key} must be 0..1.`);
+      if (proof) {
+        await mkdir(proofRoot, { recursive: true });
+        await writeFile(resolve(proofRoot, `${map.id}-alignment.png`), encodePng(comparison.proof));
+        await writeFile(resolve(proofRoot, `${map.id}-alignment.json`), `${JSON.stringify({ stageId: map.id, maskPath: map.visual.semanticMaskPath, thresholds, road: comparison.road, pads: comparison.pads }, null, 2)}\n`);
+      }
+      if (comparison.road.recall < thresholds.minRoadRecall) fail(source, `semantic road recall ${(comparison.road.recall * 100).toFixed(2)}% is below ${(thresholds.minRoadRecall * 100).toFixed(2)}%.`);
+      if (comparison.road.precision < thresholds.minRoadPrecision) fail(source, `semantic road precision ${(comparison.road.precision * 100).toFixed(2)}% is below ${(thresholds.minRoadPrecision * 100).toFixed(2)}%.`);
+      if (comparison.pads.recall < thresholds.minPadRecall) fail(source, `semantic pad recall ${(comparison.pads.recall * 100).toFixed(2)}% is below ${(thresholds.minPadRecall * 100).toFixed(2)}%.`);
+      if (comparison.pads.precision < thresholds.minPadPrecision) fail(source, `semantic pad precision ${(comparison.pads.precision * 100).toFixed(2)}% is below ${(thresholds.minPadPrecision * 100).toFixed(2)}%.`);
+    } else if (map.visual.semanticMask) fail(source, 'visual.semanticMask requires visual.semanticMaskPath.');
   } else if (map.visual?.kind === 'procedural') {
     const palette = map.visual.palette;
     if (!Number.isInteger(map.visual.seed) || !finite(map.visual.density) || map.visual.density < 0 || map.visual.density > 1) fail(source, 'procedural visual seed/density is invalid.');
@@ -197,6 +242,13 @@ for (const directory of directories) {
   const waves = await json(wavesPath);
   if (map.id !== stage.campaign.id) fail(mapPath, `map.id must match stage id '${stage.campaign.id}'.`);
   const routes = await validateMap(map, mapPath);
+  const strategicReport = analyzeStrategicGeometry(map);
+  if (proof) {
+    await mkdir(proofRoot, { recursive: true });
+    await writeFile(resolve(proofRoot, `${map.id}-strategy.json`), `${JSON.stringify(strategicReport, null, 2)}\n`);
+  }
+  for (const message of validateStrategicRequirements(map, strategicReport)) fail(mapPath, message);
+  if (strategicReport.summary.dominatedPads.length > 0) console.warn(`${mapPath}: strategic warning: coverage-dominated pads: ${strategicReport.summary.dominatedPads.join(', ')}.`);
   validateWaves(waves, routes, wavesPath);
   validateRun(stage, map, waves, stagePath);
   const primary = map.routes.find((route) => route.id === map.primaryRouteId);
