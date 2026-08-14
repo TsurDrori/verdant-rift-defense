@@ -1,4 +1,5 @@
 import { TOWERS } from '../game/content/towers';
+import { ENEMIES } from '../game/content/enemies';
 import { HERO_ARTIFACTS, HERO_LEVEL_THRESHOLDS, HERO_MILESTONE_NAMES, heroArtifactsForHero, heroSpellSpec, heroSpellsForHero, heroXpProgress } from '../game/content/heroProgression';
 import type { HeroActiveSpellId, HeroArtifactId, HeroId, TowerBranch, TowerId } from '../game/content/types';
 import type { GameEvent, HeroState, TowerState } from '../game/simulation/state';
@@ -13,6 +14,7 @@ import { renderFrontEndContent, renderFrontEndFrame, type FrontEndRenderState, t
 import { cancelIconMarkup, spellIconMarkup } from './spellIcons';
 
 const towerGlyph: Record<TowerId, string> = { thorn: '➶', ember: '✹', aegis: '♜', astral: '✦' };
+const enemyGlyph = { skitter: '⌁', marauder: '⚔', wisp: '✧', brute: '⬢', bloomlord: '♛' } as const;
 const spellShortcut: Readonly<Record<HeroActiveSpellId, number>> = {
   'rift-quake': 1,
   starfall: 2,
@@ -117,6 +119,10 @@ export class GameUI {
     controller.addEventListener('game-event', ((event: CustomEvent<GameEvent>) => this.onGameEvent(event.detail)) as EventListener);
     controller.addEventListener('presentation-event', ((event: CustomEvent<GameEvent>) => this.onPresentationEvent(event.detail)) as EventListener);
     controller.addEventListener('runtime-ready', () => this.revealRuntimeReady());
+    controller.addEventListener('hero-selected', ((event: CustomEvent<HeroId>) => {
+      this.expandedHero = event.detail;
+      this.scheduleRender();
+    }) as EventListener);
     controller.addEventListener('cast-mode-change', () => this.syncCastMode());
     controller.addEventListener('spell-target-preview', ((event: CustomEvent<SpellTargetPreview>) => this.syncCastReticle(event.detail)) as EventListener);
     controller.addEventListener('spell-target-invalid', () => this.rejectCastReticle());
@@ -157,6 +163,12 @@ export class GameUI {
           <b data-boss-percent>100%</b>
         </section>
         <section class="wave-card panel" data-wave-card></section>
+        <aside class="enemy-inspector panel" data-enemy-inspector aria-label="Selected enemy details" aria-hidden="true">
+          <span class="enemy-inspector-sigil" data-enemy-sigil aria-hidden="true">◆</span>
+          <span class="enemy-inspector-copy"><small data-enemy-role></small><b data-enemy-name></b><span class="enemy-inspector-meta" data-enemy-meta></span><span class="enemy-inspector-health"><i data-enemy-health-fill></i></span></span>
+          <strong data-enemy-hp></strong>
+          <button data-action="dismiss-enemy" aria-label="Close enemy details">×</button>
+        </aside>
         <section class="selection-panel panel" data-selection-panel aria-label="Tower controls"></section>
         <button class="panel-scroll-affordance panel" data-panel-scroll-cue data-action="panel-scroll" aria-label="Show more tower controls"><span>MORE CONTROLS</span><b>↓</b></button>
         <section class="hero-dock" data-hero-dock></section>
@@ -248,6 +260,7 @@ export class GameUI {
       else if (action === 'ability') this.controller.armAbility(button.dataset.hero as HeroId);
       else if (action === 'spell') this.controller.armSpell(button.dataset.hero as HeroId, button.dataset.spell as HeroActiveSpellId);
       else if (action === 'cancel-cast') this.controller.cancelSpellCast();
+      else if (action === 'dismiss-enemy') this.controller.clearSelection();
       else if (action === 'hero-artifact') this.chooseHeroArtifact(button.dataset.hero as HeroId, button.dataset.artifact as HeroArtifactId);
       else if (action === 'view-mode' && !this.controlsAreGated()) this.setViewMode(this.viewMode === 'focus' ? 'overview' : 'focus');
       else if (action === 'view-pan' && !this.controlsAreGated()) this.panFocusedView(Number(button.dataset.direction) || 0);
@@ -783,6 +796,7 @@ export class GameUI {
     pauseModal?.classList.toggle('is-open', snapshot.phase === 'paused' && !this.contextPaused);
     this.renderWaveCard();
     this.renderBoss();
+    this.renderEnemyInspector();
     this.renderHeroes(snapshot.heroes);
     this.syncCastMode();
     const selectionKey = JSON.stringify([this.controller.selection, snapshot.gold, snapshot.towers.map((tower) => [tower.uid, tower.level, tower.branch, tower.priority])]);
@@ -847,6 +861,24 @@ export class GameUI {
     this.setText('[data-boss-phase]', `PHASE ${['I', 'II', 'III'][boss.bossPhase] ?? 'III'}`);
   }
 
+  private renderEnemyInspector(): void {
+    const target = this.root.querySelector<HTMLElement>('[data-enemy-inspector]');
+    if (!target) return;
+    const enemy = this.controller.selectedEnemy();
+    target.classList.toggle('is-visible', Boolean(enemy));
+    target.setAttribute('aria-hidden', enemy ? 'false' : 'true');
+    if (!enemy) return;
+    const definition = ENEMIES[enemy.type];
+    const ratio = Math.max(0, Math.min(1, enemy.hp / enemy.maxHp));
+    target.style.setProperty('--enemy-accent', `#${definition.accent.toString(16).padStart(6, '0')}`);
+    this.setText('[data-enemy-sigil]', enemyGlyph[enemy.type]);
+    this.setText('[data-enemy-role]', `${definition.flying ? 'FLYING' : 'GROUND'} • WAVE ${enemy.wave}`);
+    this.setText('[data-enemy-name]', definition.name);
+    this.setText('[data-enemy-meta]', `${definition.role} • ${Math.round(definition.armor * 100)}% armor • ${Math.round(definition.resistance * 100)}% ward`);
+    this.setText('[data-enemy-hp]', `${Math.ceil(enemy.hp)} / ${Math.ceil(enemy.maxHp)}`);
+    target.querySelector<HTMLElement>('[data-enemy-health-fill]')?.style.setProperty('--enemy-health', String(ratio));
+  }
+
   private renderHeroes(heroes: readonly HeroState[]): void {
     const dock = this.root.querySelector<HTMLElement>('[data-hero-dock]');
     if (!dock) return;
@@ -863,9 +895,12 @@ export class GameUI {
         </button>
         <div class="hero-details" data-hero-details hidden>
           <div class="hero-copy"><small><span class="hero-rank-label">CHAMPION ${index + 1} • </span><strong data-hero-level></strong></small><b>${hero.name.split(' • ')[0]}</b><span data-hero-hp></span><div class="hero-xp-row"><span data-hero-xp></span><em>${[2, 4, 6].map((level, milestoneIndex) => `<i class="hero-milestone" data-milestone="${milestoneIndex}" title="Unlocks at level ${level}" aria-label="Unlocks at level ${level}"></i>`).join('')}</em></div><div class="hero-xp-track" role="progressbar" aria-label="${hero.name} experience" aria-valuemin="0"><i data-hero-xp-fill></i></div></div>
-          <div class="hero-spell-stack">${activeSpellsFor(hero).map((spell) => `<button type="button" class="ability-button hero-command-spell" data-action="spell" data-hero="${hero.id}" data-spell="${spell.id}" style="--hero:#${hero.accent.toString(16).padStart(6, '0')}" title="${spell.description}">
-            <span class="ability-glyph" data-spell-glyph data-icon-state="${spell.id}">${spellIconMarkup(spell.id)}</span><strong data-spell-state></strong><b data-spell-key>${spellShortcut[spell.id]}</b>
-          </button>`).join('')}</div>
+          <div class="hero-spell-stack">${activeSpellsFor(hero).map((spell) => `<span class="hero-spell-slot">
+            <button type="button" class="ability-button hero-command-spell" data-action="spell" data-hero="${hero.id}" data-spell="${spell.id}" style="--hero:#${hero.accent.toString(16).padStart(6, '0')}" aria-describedby="spell-tip-${hero.id}-${spell.id}">
+              <span class="ability-glyph" data-spell-glyph data-icon-state="${spell.id}">${spellIconMarkup(spell.id)}</span><strong data-spell-state></strong><b data-spell-key>${spellShortcut[spell.id]}</b>
+            </button>
+            <span class="spell-tooltip" id="spell-tip-${hero.id}-${spell.id}" role="tooltip"><b>${spell.name}</b><small>${spell.description}</small><em>${spell.cooldown}s recharge • ${spell.targeting === 'self' ? `${spell.effectRadius} area` : `${spell.castRange} cast • ${spell.effectRadius} area`}</em></span>
+          </span>`).join('')}</div>
         </div>
       </article>`).join('');
     }
@@ -943,7 +978,7 @@ export class GameUI {
     const panel = this.root.querySelector<HTMLElement>('[data-selection-panel]');
     if (!panel) return;
     const selection = this.controller.selection;
-    if (selection.kind === 'none' || selection.kind === 'hero') { panel.classList.remove('is-visible'); panel.innerHTML = ''; delete panel.dataset.side; document.documentElement.classList.remove('context-panel-open'); this.syncPanelScrollAffordance(); return; }
+    if (selection.kind === 'none' || selection.kind === 'hero' || selection.kind === 'enemy') { panel.classList.remove('is-visible'); panel.innerHTML = ''; delete panel.dataset.side; document.documentElement.classList.remove('context-panel-open'); this.syncPanelScrollAffordance(); return; }
     panel.classList.add('is-visible');
     // Phaser's input manager listens above the canvas. Explicitly gate canvas
     // input while a DOM context panel is active so pointer-down cannot select a

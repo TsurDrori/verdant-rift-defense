@@ -288,6 +288,12 @@ test('keeps real-wave enemies and health bars above restrained impact decals', a
 
   await castOnDurableWaveEnemy('lyra');
   await page.waitForTimeout(650);
+  await expect.poll(() => page.evaluate(() => {
+    const scene = window.__VERDANT_RIFT_GAME__!.scene.getScene('battle');
+    const enemy = window.__VERDANT_RIFT__!.snapshot().enemies.find((candidate) => candidate.alive)!;
+    const view = scene.children.getByName(`enemy-view-${enemy.uid}`) as unknown as { getData(key: string): { alpha: number } } | null;
+    return view?.getData('hp').alpha ?? 0;
+  })).toBeGreaterThan(0.8);
   const starfallReadability = await page.evaluate(() => {
     const scene = window.__VERDANT_RIFT_GAME__!.scene.getScene('battle');
     const enemy = window.__VERDANT_RIFT__!.snapshot().enemies.find((candidate) => candidate.alive)!;
@@ -312,6 +318,12 @@ test('keeps real-wave enemies and health bars above restrained impact decals', a
 
   await castOnDurableWaveEnemy('kael');
   await page.waitForTimeout(430);
+  await expect.poll(() => page.evaluate(() => {
+    const scene = window.__VERDANT_RIFT_GAME__!.scene.getScene('battle');
+    const enemy = window.__VERDANT_RIFT__!.snapshot().enemies.find((candidate) => candidate.alive)!;
+    const view = scene.children.getByName(`enemy-view-${enemy.uid}`) as unknown as { getData(key: string): { alpha: number } } | null;
+    return view?.getData('hp').alpha ?? 0;
+  })).toBeGreaterThan(0.8);
   const quakeReadability = await page.evaluate(() => {
     const scene = window.__VERDANT_RIFT_GAME__!.scene.getScene('battle');
     const enemy = window.__VERDANT_RIFT__!.snapshot().enemies.find((candidate) => candidate.alive)!;

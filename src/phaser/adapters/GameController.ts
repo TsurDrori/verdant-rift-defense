@@ -6,14 +6,15 @@ import { RUN_DEFINITIONS } from '../../game/content/generated/stages';
 import type { RunDefinition } from '../../game/content/stages/types';
 import { GameSimulation } from '../../game/simulation/GameSimulation';
 import type { Vec2 } from '../../game/simulation/geometry';
-import type { GameEvent, GameSnapshot, TowerState } from '../../game/simulation/state';
+import type { EnemyState, GameEvent, GameSnapshot, TowerState } from '../../game/simulation/state';
 import type { DifficultyId } from '../../game/simulation/state';
 
 export type Selection =
   | { kind: 'none' }
   | { kind: 'pad'; padIndex: number }
   | { kind: 'tower'; towerUid: number }
-  | { kind: 'hero'; heroId: HeroId };
+  | { kind: 'hero'; heroId: HeroId }
+  | { kind: 'enemy'; enemyUid: number };
 
 export type SpellTargetingKind = 'point' | 'self';
 
@@ -83,6 +84,10 @@ export class GameController extends EventTarget {
   update(delta: number): void {
     this.simulation.update(delta);
     if (this.armedSpell && !this.armedHeroCanCast()) this.cancelSpellCast(false);
+    if (this.selection.kind === 'enemy') {
+      const enemyUid = this.selection.enemyUid;
+      if (!this.snapshot().enemies.some((enemy) => enemy.uid === enemyUid && enemy.alive)) this.selection = { kind: 'none' };
+    }
     this.changed(false);
   }
   discardElapsedTime(): void { this.simulation.discardElapsedTime(); }
@@ -131,13 +136,30 @@ export class GameController extends EventTarget {
     this.selection = { kind: 'tower', towerUid };
     this.changed();
   }
-  selectHero(heroId: HeroId): void { if (this.armedSpell) return; this.selection = { kind: 'hero', heroId }; this.changed(); }
+  selectHero(heroId: HeroId): void {
+    if (this.armedSpell) return;
+    this.selection = { kind: 'hero', heroId };
+    this.dispatchEvent(new CustomEvent<HeroId>('hero-selected', { detail: heroId }));
+    this.changed();
+  }
+  selectEnemy(enemyUid: number): void {
+    if (this.armedSpell) return;
+    if (!this.snapshot().enemies.some((enemy) => enemy.uid === enemyUid && enemy.alive)) return;
+    this.selection = { kind: 'enemy', enemyUid };
+    this.changed();
+  }
   clearSelection(): void { this.selection = { kind: 'none' }; this.cancelSpellCast(false); this.changed(); }
 
   selectedTower(): TowerState | undefined {
     if (this.selection.kind !== 'tower') return undefined;
     const towerUid = this.selection.towerUid;
     return this.snapshot().towers.find((tower) => tower.uid === towerUid);
+  }
+
+  selectedEnemy(): EnemyState | undefined {
+    if (this.selection.kind !== 'enemy') return undefined;
+    const enemyUid = this.selection.enemyUid;
+    return this.snapshot().enemies.find((enemy) => enemy.uid === enemyUid && enemy.alive);
   }
 
   build(type: TowerId, tactical = false): boolean {

@@ -254,12 +254,19 @@ export class BattleScene extends Phaser.Scene {
       // The painted 74px stone ring remains an intentional pad selection. The
       // larger invisible touch proxy below it may instead carry a selected hero
       // along the road, so generosity never masquerades as visible geometry.
-      hover.setInteractive({ useHandCursor: true }).on('pointerdown', (pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
-        event.stopPropagation();
-        if (!this.uiOwnsPointer(pointer) && !this.routeProxyToSelectedHero(pointer)) this.controller.selectPad(index);
+      // One interactive owner avoids pointerout/pointerover exchanges between
+      // overlapping child shapes, which previously flashed the ring twice as
+      // the pointer crossed a foundation.
+      container.on('pointerover', () => {
+        container.setData('isHovered', true);
+        hover.setFillStyle(0x9ce2b8, 0.14).setStrokeStyle(2.5, 0xbef5d4, 0.82);
+        rune.setFillStyle(0xffe897, 0.95);
       });
-      container.on('pointerover', () => { hover.setFillStyle(0x9ce2b8, 0.14).setStrokeStyle(2.5, 0xbef5d4, 0.82); rune.setFillStyle(0xffe897, 0.95); container.setScale(1.08); });
-      container.on('pointerout', () => { hover.setFillStyle(0x9ce2b8, 0).setStrokeStyle(2, 0xf4dda7, 0.1); rune.setFillStyle(0xc9e7bd, 0.75); container.setScale(1); });
+      container.on('pointerout', () => {
+        container.setData('isHovered', false);
+        hover.setFillStyle(0x9ce2b8, 0).setStrokeStyle(2, 0xf4dda7, 0.1);
+        rune.setFillStyle(0xc9e7bd, 0.75);
+      });
       container.on('pointerdown', (pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
         event.stopPropagation();
         if (!this.uiOwnsPointer(pointer) && !this.routeProxyToSelectedHero(pointer)) this.controller.selectPad(index);
@@ -459,6 +466,7 @@ export class BattleScene extends Phaser.Scene {
       view.setName(`hero-hit-${hero.id}`).setData('touchProxy', { width: 112, height: 120 });
       view.setSize(112, 120).setInteractive({ useHandCursor: true });
       view.on('pointerdown', (pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => { event.stopPropagation(); if (!this.uiOwnsPointer(pointer)) this.controller.selectHero(hero.id); });
+      this.bindPersistentWorldHover(view, [view], hero.accent, 68, 27, 11, `hero-hover-${hero.id}`);
       this.heroViews.set(hero.id, view);
     }
   }
@@ -492,16 +500,24 @@ export class BattleScene extends Phaser.Scene {
         // vertically adjacent pads overlap in screen space. Pixel-perfect
         // sprite input keeps every opaque bow, fin, and spire clickable without
         // allowing a transparent rectangle to steal the neighboring tower.
-        const selectTower = (_pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData): void => {
+        const selectTowerArtwork = (_pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData): void => {
+          event.stopPropagation();
+          if (this.uiOwnsPointer(_pointer)) return;
+          const click = this.pointerWorldPoint(_pointer);
+          // The upper architecture is an unconditional tower target. Around
+          // its feet, a selected hero owns the actual road underneath it.
+          if (click.y < point.y - 22 || !this.routeProxyToSelectedHero(_pointer)) this.controller.selectTower(tower.uid);
+        };
+        const selectTowerBase = (_pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData): void => {
           event.stopPropagation();
           if (!this.uiOwnsPointer(_pointer) && !this.routeProxyToSelectedHero(_pointer)) this.controller.selectTower(tower.uid);
         };
-        const selectTowerProxy = (_pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData): void => {
+        const selectTowerCrown = (_pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData): void => {
           event.stopPropagation();
-          if (!this.uiOwnsPointer(_pointer) && !this.routeProxyToSelectedHero(_pointer)) this.controller.selectTower(tower.uid);
+          if (!this.uiOwnsPointer(_pointer)) this.controller.selectTower(tower.uid);
         };
         const sprite = view.getData('sprite') as Phaser.GameObjects.Image;
-        sprite.setInteractive({ pixelPerfect: true, alphaTolerance: 12, useHandCursor: true }).on('pointerdown', selectTower);
+        sprite.setInteractive({ pixelPerfect: true, alphaTolerance: 12, useHandCursor: true }).on('pointerdown', selectTowerArtwork);
         // Preserve the painted foundation as a stable selection target after a
         // tower is built. Branch sprites have transparent gaps around their
         // feet, so relying on pixel-perfect art alone made a center-pad click
@@ -510,17 +526,18 @@ export class BattleScene extends Phaser.Scene {
           .setName(`tower-foundation-hit-${tower.uid}`)
           .setData('touchProxy', { width: 88, height: 52 })
           .setInteractive({ useHandCursor: true })
-          .on('pointerdown', selectTowerProxy);
+          .on('pointerdown', selectTowerBase);
         // A generous, non-overlapping crown zone makes the intended selection
         // gesture forgiving even when the painted top has thin transparent gaps.
-        const crownHit = this.add.zone(0, -68, 112, 120)
+        const crownHit = this.add.zone(0, -78, 112, 112)
           .setName(`tower-crown-hit-${tower.uid}`)
-          .setData('touchProxy', { width: 112, height: 120 })
+          .setData('touchProxy', { width: 112, height: 112 })
           .setInteractive({ useHandCursor: true })
-          .on('pointerdown', selectTowerProxy);
+          .on('pointerdown', selectTowerCrown);
         // Keep the invisible tolerance zones behind the opaque pixel-perfect
         // sprite. Exact tower art selects; proxy-only road presses move heroes.
         view.addAt([foundationHit, crownHit], 0);
+        this.bindPersistentWorldHover(view, [sprite, foundationHit, crownHit], this.controller.towerDefinition(tower.type).accent, 82, 31, 14, `tower-hover-${tower.uid}`);
         this.towerViews.set(tower.uid, view);
       }
       this.setTowerPostFx(view, !this.enemyFxReduced);
@@ -549,6 +566,18 @@ export class BattleScene extends Phaser.Scene {
         view = createEnemyView(this, enemy);
         view.setName(`enemy-view-${enemy.uid}`);
         view.setData('postFxEnabled', true);
+        const definition = this.controller.enemyDefinition(enemy.type);
+        const hitWidth = Math.max(52, definition.radius * (enemy.type === 'bloomlord' ? 4.2 : 3.2));
+        const hitHeight = enemy.type === 'bloomlord' ? 154 : definition.flying ? 88 : 76;
+        view.setSize(hitWidth, hitHeight).setInteractive({ useHandCursor: true });
+        view.on('pointerdown', (pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+          event.stopPropagation();
+          if (this.uiOwnsPointer(pointer)) return;
+          // Clicking a foe while commanding a hero means move/engage. Without
+          // a selected hero the same visible target opens compact inspection.
+          if (!this.routeProxyToSelectedHero(pointer)) this.controller.selectEnemy(enemy.uid);
+        });
+        this.bindPersistentWorldHover(view, [view], definition.accent, Math.max(48, definition.radius * 3), Math.max(20, definition.radius * 1.2), 12, `enemy-hover-${enemy.uid}`);
         this.enemyViews.set(enemy.uid, view);
       }
       this.setEnemyPostFx(view, enemy.type, !this.enemyFxReduced);
@@ -732,8 +761,68 @@ export class BattleScene extends Phaser.Scene {
     }
     this.padRings.forEach((pad, index) => {
       const selected = selection.kind === 'pad' && selection.padIndex === index;
-      pad.setScale(selected ? 1.17 : 1);
+      pad.setScale(selected ? 1.17 : pad.getData('isHovered') ? 1.08 : 1);
     });
+    this.towerViews.forEach((view) => this.syncWorldHover(view));
+    this.heroViews.forEach((view, heroId) => {
+      view.setData('isSelected', selection.kind === 'hero' && selection.heroId === heroId);
+      this.syncWorldHover(view);
+    });
+    this.enemyViews.forEach((view, enemyUid) => {
+      view.setData('isSelected', selection.kind === 'enemy' && selection.enemyUid === enemyUid);
+      this.syncWorldHover(view);
+    });
+  }
+
+  /** A single sustained halo survives transitions between an entity's sprite
+   * and forgiving hit proxies. Only the halo breathes; the entity never blips
+   * or changes scale under the pointer. */
+  private bindPersistentWorldHover(
+    owner: Phaser.GameObjects.Container,
+    targets: Phaser.GameObjects.GameObject[],
+    color: number,
+    width: number,
+    height: number,
+    y: number,
+    name: string,
+  ): void {
+    const halo = this.add.ellipse(0, y, width, height, color, 0.08)
+      .setName(name).setStrokeStyle(2, color, 0.72).setBlendMode(Phaser.BlendModes.ADD).setVisible(false);
+    owner.addAt(halo, 0);
+    owner.setData('worldHoverHalo', halo).setData('hoverOwners', new Set<Phaser.GameObjects.GameObject>()).setData('isHovered', false);
+    const owners = owner.getData('hoverOwners') as Set<Phaser.GameObjects.GameObject>;
+    targets.forEach((target) => {
+      target.on('pointerover', () => {
+        owners.add(target);
+        owner.setData('isHovered', true);
+        this.syncWorldHover(owner);
+      });
+      target.on('pointerout', () => {
+        owners.delete(target);
+        this.time.delayedCall(0, () => {
+          if (!owner.active || owners.size > 0) return;
+          owner.setData('isHovered', false);
+          this.syncWorldHover(owner);
+        });
+      });
+    });
+  }
+
+  private syncWorldHover(owner: Phaser.GameObjects.Container): void {
+    const halo = owner.getData('worldHoverHalo') as Phaser.GameObjects.Ellipse | undefined;
+    if (!halo) return;
+    const visible = Boolean(owner.getData('isHovered') || owner.getData('isSelected'));
+    const wasVisible = Boolean(owner.getData('worldHoverActive'));
+    if (visible === wasVisible) return;
+    owner.setData('worldHoverActive', visible);
+    this.tweens.killTweensOf(halo);
+    halo.setScale(1).setAlpha(0.68).setVisible(visible);
+    // Dense waves can contain more than eighty foes. Animate only the handful
+    // currently hovered or selected instead of maintaining one idle infinite
+    // tween per entity.
+    if (visible && !document.documentElement.classList.contains('reduce-motion')) {
+      this.tweens.add({ targets: halo, alpha: { from: 0.34, to: 0.78 }, scaleX: { from: 0.94, to: 1.08 }, scaleY: { from: 0.9, to: 1.06 }, duration: 760, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+    }
   }
 
   private handleEvent(event: GameEvent): void {
