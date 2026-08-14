@@ -57,6 +57,42 @@ export interface PaintedMapVisual {
   };
 }
 
+export interface PaintedLayerAsset {
+  assetKey: string;
+  assetPath: string;
+}
+
+/**
+ * Content-scalable painted battlefield. Geometry remains authoritative while
+ * every visible gameplay surface is assembled from reusable painted art.
+ */
+export interface LayeredPaintedMapVisual {
+  kind: 'layered-painted';
+  /** Scenery only: no route, bridge, foundation, or placement markings. */
+  terrain: PaintedLayerAsset;
+  /** A transparent horizontal brush stamped and rotated along route geometry. */
+  road: PaintedLayerAsset & {
+    stampLength: number;
+    stampSpacing: number;
+    shoulder: number;
+  };
+  /** A transparent circular decal centered directly on each build pad. */
+  foundation: PaintedLayerAsset & {
+    diameterScale?: number;
+  };
+  /** Optional transparent sprites rendered above actors for real occlusion. */
+  foreground?: PaintedLayerAsset & {
+    placements: readonly {
+      x: number;
+      y: number;
+      scale?: number;
+      rotation?: number;
+      depth?: number;
+      flipX?: boolean;
+    }[];
+  };
+}
+
 export interface ProceduralMapVisual {
   kind: 'procedural';
   seed: number;
@@ -78,7 +114,7 @@ export interface BattleMapDefinition {
   id: string;
   title: string;
   world: { width: number; height: number };
-  visual: PaintedMapVisual | ProceduralMapVisual;
+  visual: PaintedMapVisual | LayeredPaintedMapVisual | ProceduralMapVisual;
   primaryRouteId: string;
   routes: readonly BattleRouteDefinition[];
   /** Compatibility alias for the primary route. New code uses routes. */

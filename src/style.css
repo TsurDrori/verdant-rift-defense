@@ -267,7 +267,10 @@ html.spell-cast-mode #game-root canvas { cursor:crosshair !important; touch-acti
 .cast-reticle b::before { left:-5px; }.cast-reticle b::after { right:-5px; }
 .cast-reticle span { position:absolute; top:82px; left:50%; min-width:82px; padding:3px 6px; border:1px solid var(--reticle-color); border-radius:10px; color:#071512; background:var(--reticle-color); font-size:9px; font-weight:900; letter-spacing:.6px; text-align:center; transform:translateX(-50%); }
 .cast-reticle.is-invalid { --reticle-color:#ff8a78; }
+.cast-reticle.is-approachable { --reticle-color:#ffd778; }
+.cast-reticle.is-queued { animation:queued-cast 1s ease-in-out infinite alternate; }
 .cast-reticle.is-rejected { animation:cast-reject .24s ease; }
+@keyframes queued-cast { to { filter:drop-shadow(0 0 15px currentColor); transform:translate(-50%,-50%) scale(1.07); } }
 @keyframes cast-reticle-spin { to { transform:rotate(360deg); } }
 @keyframes cast-reject { 40% { transform:translate(-50%,-50%) scale(1.18); filter:drop-shadow(0 0 14px #ff6d5e); } }
 

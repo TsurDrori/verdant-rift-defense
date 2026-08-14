@@ -24,17 +24,23 @@ pnpm dev
 
 Preview any playable package directly at `http://localhost:4173/?stage=my-stage-id&debugMap=1`. The `stage` query bypasses campaign locking for authoring; `debugMap=1` overlays the exact runtime lanes and build geometry.
 
-## Two production visual modes
+## Three visual modes
+
+### Layered painted composition (recommended)
+
+Set `visual.kind` to `layered-painted`. Supply a scenery-only 1600×900 terrain painting plus transparent reusable road, foundation, and optional foreground-foliage sprites. The renderer stamps the painted road brush along every route centerline, centers the painted foundation on every build pad, and places foreground sprites above actors for genuine occlusion. The compiler validates every asset and all brush/placement metrics.
+
+This is the primary production workflow: the battlefield remains fully painted, but roads and foundations cannot drift away from navigation or tower geometry because the same JSON coordinates create both gameplay and art. A new map needs one scenery painting and can reuse an existing biome kit; a new biome needs a small tile kit, not a monolithic painted road baked into every scene.
 
 ### Procedural composition
 
 Set `visual.kind` to `procedural`. The map renderer deterministically composes terrain color variation, water bands, foliage, landmarks, roads, lane edging, road wear, and build-pad foundations from the JSON seed and palette. Roads are drawn from the same route geometry enemies use, so painted-road and collision drift is impossible. This is the fastest AI-native path for a complete, functional stage.
 
-### Painted composition
+### Monolithic painted composition (legacy/special cases)
 
 Set `visual.kind` to `painted` and provide a stable asset key and a 1600×900 image under `public/assets/`. The compiler verifies that the file exists and that a PNG has the exact world dimensions. Use `debugMap=1` to align its visible road and foundations to canonical route/pad data. Painted art is presentation; `map.json` remains the gameplay authority.
 
-The modes share one runtime contract. A campaign can mix authored key-art maps with deterministic procedural maps without special-case simulation code.
+All modes share one runtime contract. A campaign can mix layered paintings, monolithic key-art maps, and deterministic procedural maps without simulation changes.
 
 For production painted stages, use the explicit semantic-mask workflow in [`PAINTED_MAP_VALIDATION.md`](./PAINTED_MAP_VALIDATION.md). It preserves the full beauty painting while giving the compiler a machine-verifiable road and foundation contract. `pnpm map:mask <stage-id>` creates the locked authoring guide; `pnpm content:proof` emits alignment and strategic evidence.
 
@@ -56,7 +62,7 @@ The compiler emits `src/game/content/generated/stages.ts`. Never hand-edit that 
 ## Content-agent checklist
 
 1. Scaffold the package with `pnpm stage:new`.
-2. Choose procedural or painted visual composition.
+2. Choose layered-painted, procedural, or monolithic painted visual composition.
 3. Author route centerlines first, then entrances, gate, and route-aware wave groups.
 4. Place pads where their attack coverage creates distinct choices rather than uniform coverage.
 5. Set hero spawn progress and stage-specific economy.
@@ -64,4 +70,4 @@ The compiler emits `src/game/content/generated/stages.ts`. Never hand-edit that 
 7. Preview with `?stage=<id>&debugMap=1` at desktop, shallow landscape, and portrait.
 8. Remove `debugMap=1`, play several waves at 2×, and check route traffic, clicks, tower coverage, hero movement, and frame telemetry.
 
-`rootbound-crossing` is the reference multi-route procedural package. `sunken-way` is the reference painted package.
+`rootbound-crossing` is the reference multi-route procedural package. `sunken-way` is the reference layered-painted package.

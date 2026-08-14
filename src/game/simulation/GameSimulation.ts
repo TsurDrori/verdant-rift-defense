@@ -84,6 +84,7 @@ export class GameSimulation {
   private defenders: DefenderState[] = [];
   private events: GameEvent[] = [];
   private heroes: HeroState[];
+  private heroSpellApproaches = new Map<HeroId, Vec2>();
 
   constructor(run: RunDefinition = RUN_DEFINITIONS['sunken-way']!) {
     this.run = run;
@@ -1042,6 +1043,7 @@ export class GameSimulation {
       }
       hero.attackCooldown -= dt;
       if (!hero.alive) {
+        this.heroSpellApproaches.delete(hero.id);
         hero.respawnTime = Math.max(0, hero.respawnTime - dt);
         if (hero.respawnTime === 0) {
           hero.alive = true;
@@ -1053,6 +1055,18 @@ export class GameSimulation {
           hero.regenCooldown = 0;
           this.events.push({ type: 'ally-respawned', allyUid: this.allyRef(hero), point: { ...hero.spawn } });
         }
+        continue;
+      }
+
+      const spellApproach = this.heroSpellApproaches.get(hero.id);
+      if (spellApproach) {
+        // A deliberate cast command owns movement until the controller either
+        // commits or cancels it. This prevents Kael's blocking AI from peeling
+        // off onto a nearby creep and becoming permanently stuck just outside
+        // the requested cast radius.
+        this.releaseAlly(hero);
+        hero.regenCooldown = Math.max(0, hero.regenCooldown - dt);
+        this.moveAllyOnRoute(hero, spellApproach, hero.speed, dt, 3);
         continue;
       }
 
@@ -1143,6 +1157,23 @@ export class GameSimulation {
     const clamped = { x: Math.max(45, Math.min(1555, point.x)), y: Math.max(70, Math.min(855, point.y)) };
     hero.target = this.geometry.project(clamped).point;
     hero.commanded = true;
+  }
+
+  beginHeroSpellApproach(id: HeroId, point: Vec2): boolean {
+    const hero = this.heroes.find((candidate) => candidate.id === id);
+    if (!hero || !hero.alive || this.phase !== 'playing') return false;
+    this.releaseAlly(hero);
+    const destination = this.geometry.project(point).point;
+    hero.target = { ...destination };
+    hero.commanded = true;
+    this.heroSpellApproaches.set(id, { ...destination });
+    return true;
+  }
+
+  cancelHeroSpellApproach(id: HeroId): void {
+    if (!this.heroSpellApproaches.delete(id)) return;
+    const hero = this.heroes.find((candidate) => candidate.id === id);
+    if (hero?.alive) hero.target = { x: hero.x, y: hero.y };
   }
 
   useAbility(id: HeroId, point: Vec2): boolean {

@@ -33,9 +33,48 @@ export const STAGE_CATALOG = [
           "height": 900
         },
         "visual": {
-          "kind": "painted",
-          "assetKey": "environment.verdant-rift",
-          "assetPath": "assets/environment/verdant-rift-1600.png"
+          "kind": "layered-painted",
+          "terrain": {
+            "assetKey": "environment.verdant-rift-terrain",
+            "assetPath": "assets/environment/verdant-rift-terrain-1600.png"
+          },
+          "road": {
+            "assetKey": "environment.tiles.verdant-road",
+            "assetPath": "assets/environment/tiles/verdant-road-straight.png",
+            "stampLength": 112,
+            "stampSpacing": 42,
+            "shoulder": 8
+          },
+          "foundation": {
+            "assetKey": "environment.tiles.verdant-foundation",
+            "assetPath": "assets/environment/tiles/verdant-foundation.png",
+            "diameterScale": 1.45
+          },
+          "foreground": {
+            "assetKey": "environment.tiles.verdant-foreground",
+            "assetPath": "assets/environment/tiles/verdant-foreground-foliage.png",
+            "placements": [
+              {
+                "x": 520,
+                "y": 276,
+                "scale": 0.38,
+                "rotation": -0.06
+              },
+              {
+                "x": 1038,
+                "y": 796,
+                "scale": 0.34,
+                "rotation": 0.04,
+                "flipX": true
+              },
+              {
+                "x": 1324,
+                "y": 711,
+                "scale": 0.32,
+                "rotation": -0.12
+              }
+            ]
+          }
         },
         "primaryRouteId": "main",
         "routes": [
@@ -723,8 +762,20 @@ export const STAGE_CATALOG = [
       "assets": {
         "images": [
           {
-            "key": "environment.verdant-rift",
-            "path": "assets/environment/verdant-rift-1600.png"
+            "key": "environment.verdant-rift-terrain",
+            "path": "assets/environment/verdant-rift-terrain-1600.png"
+          },
+          {
+            "key": "environment.tiles.verdant-road",
+            "path": "assets/environment/tiles/verdant-road-straight.png"
+          },
+          {
+            "key": "environment.tiles.verdant-foundation",
+            "path": "assets/environment/tiles/verdant-foundation.png"
+          },
+          {
+            "key": "environment.tiles.verdant-foreground",
+            "path": "assets/environment/tiles/verdant-foreground-foliage.png"
           }
         ]
       },

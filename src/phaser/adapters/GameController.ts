@@ -27,13 +27,18 @@ export interface ArmedHeroSpell {
 export interface SpellTargetPreview extends ArmedHeroSpell {
   point?: Vec2;
   valid?: boolean;
+  approachable?: boolean;
+  queued?: boolean;
 }
+
+export interface QueuedHeroSpellCast extends ArmedHeroSpell { point: Vec2 }
 
 export class GameController extends EventTarget {
   simulation: GameSimulation;
   run: RunDefinition;
   selection: Selection = { kind: 'none' };
   armedSpell?: ArmedHeroSpell;
+  queuedSpellCast?: QueuedHeroSpellCast;
   spellTargetPreview?: SpellTargetPreview;
   private pendingPresentationLethals = 0;
   private deferredPresentationEvents: GameEvent[] = [];
@@ -57,6 +62,7 @@ export class GameController extends EventTarget {
     this.simulation = new GameSimulation(run);
     this.selection = { kind: 'none' };
     this.armedSpell = undefined;
+    this.queuedSpellCast = undefined;
     this.spellTargetPreview = undefined;
     this.pendingPresentationLethals = 0;
     this.deferredPresentationEvents = [];
@@ -84,6 +90,10 @@ export class GameController extends EventTarget {
   update(delta: number): void {
     this.simulation.update(delta);
     if (this.armedSpell && !this.armedHeroCanCast()) this.cancelSpellCast(false);
+    const queued = this.queuedSpellCast;
+    if (queued && this.armedSpell && this.canCastArmedSpellAt(queued.point)) {
+      if (this.useHeroSpell(queued.heroId, queued.spellId, queued.point)) this.cancelSpellCast(false);
+    }
     if (this.selection.kind === 'enemy') {
       const enemyUid = this.selection.enemyUid;
       if (!this.snapshot().enemies.some((enemy) => enemy.uid === enemyUid && enemy.alive)) this.selection = { kind: 'none' };
@@ -236,6 +246,7 @@ export class GameController extends EventTarget {
       this.cancelSpellCast();
       return;
     }
+    if (this.armedSpell) this.cancelSpellCast(false);
     this.selection = { kind: 'hero', heroId: id };
     if (spell.targeting === 'self') {
       if (!this.useHeroSpell(id, spellId, hero)) this.invalidAction();
@@ -251,7 +262,10 @@ export class GameController extends EventTarget {
 
   cancelSpellCast(changed = true): boolean {
     if (!this.armedSpell) return false;
+    const approachingHero = this.queuedSpellCast?.heroId;
+    if (approachingHero) this.simulation.cancelHeroSpellApproach(approachingHero);
     this.armedSpell = undefined;
+    this.queuedSpellCast = undefined;
     this.spellTargetPreview = undefined;
     this.dispatchEvent(new CustomEvent<undefined>('cast-mode-change', { detail: undefined }));
     if (changed) this.changed();
@@ -264,11 +278,13 @@ export class GameController extends EventTarget {
       ...this.armedSpell,
       point,
       valid: point ? this.canCastArmedSpellAt(point) : undefined,
+      approachable: point ? this.canApproachArmedSpellAt(point) : undefined,
     };
     const previous = this.spellTargetPreview;
     const unchanged = previous?.point?.x === preview.point?.x
       && previous?.point?.y === preview.point?.y
       && previous?.valid === preview.valid
+      && previous?.approachable === preview.approachable
       && previous?.heroId === preview.heroId
       && previous?.spellId === preview.spellId;
     this.spellTargetPreview = preview;
@@ -281,6 +297,11 @@ export class GameController extends EventTarget {
       const armed = this.armedSpell;
       if (this.canCastArmedSpellAt(point) && this.useHeroSpell(armed.heroId, armed.spellId, point)) {
         this.cancelSpellCast(false);
+      } else if (this.canApproachArmedSpellAt(point) && this.simulation.beginHeroSpellApproach(armed.heroId, point)) {
+        this.queuedSpellCast = { ...armed, point: { ...point } };
+        this.spellTargetPreview = { ...armed, point: { ...point }, valid: false, approachable: true, queued: true };
+        this.dispatchEvent(new CustomEvent<SpellTargetPreview>('spell-target-preview', { detail: this.spellTargetPreview }));
+        this.dispatchEvent(new CustomEvent<QueuedHeroSpellCast>('spell-cast-queued', { detail: this.queuedSpellCast }));
       } else {
         this.previewSpellTarget(point);
         this.dispatchEvent(new CustomEvent<SpellTargetPreview>('spell-target-invalid', { detail: this.spellTargetPreview! }));
@@ -337,6 +358,16 @@ export class GameController extends EventTarget {
     if (!armed) return false;
     if (!this.armedHeroCanCast()) return false;
     return this.simulation.canUseHeroSpell(armed.heroId, armed.spellId, point);
+  }
+
+  private canApproachArmedSpellAt(point: Vec2): boolean {
+    const armed = this.armedSpell;
+    if (!armed || !this.armedHeroCanCast()) return false;
+    const targeting = this.simulation.getHeroSpellTargeting(armed.heroId, armed.spellId);
+    if (!targeting || targeting.targeting !== 'point' || this.canCastArmedSpellAt(point)) return false;
+    // Heroes travel on authored roads. Reject clicks whose nearest legal road
+    // point can never enter the spell radius instead of queueing forever.
+    return this.simulation.geometry.project(point).distance <= Math.max(0, targeting.castRange - 4);
   }
 
   private armedHeroCanCast(): boolean {

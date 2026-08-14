@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { ASSETS } from '../../game/assets/manifest';
 import { assetUrl } from '../../game/assets/url';
-import type { ProceduralMapVisual } from '../../game/content/maps/types';
+import type { LayeredPaintedMapVisual, ProceduralMapVisual } from '../../game/content/maps/types';
 import type { RunDefinition } from '../../game/content/stages/types';
 import type { AttackPresentationEvent, GameEvent, ProjectileStyle } from '../../game/simulation/state';
 import { GameController } from '../adapters/GameController';
@@ -114,7 +114,62 @@ export class BattleScene extends Phaser.Scene {
       this.add.image(map.world.width / 2, map.world.height / 2, map.visual.assetKey).setDisplaySize(map.world.width, map.world.height).setDepth(0);
       return;
     }
+    if (map.visual.kind === 'layered-painted') {
+      this.createLayeredPaintedMap(map.visual);
+      return;
+    }
     this.createProceduralMap(map.visual);
+  }
+
+  private createLayeredPaintedMap(visual: LayeredPaintedMapVisual): void {
+    const map = this.controller.run.map;
+    const geometry = this.controller.simulation.geometry;
+    this.add.image(map.world.width / 2, map.world.height / 2, visual.terrain.assetKey)
+      .setDisplaySize(map.world.width, map.world.height)
+      .setDepth(0)
+      .setName('layered-painted-terrain');
+
+    // The brush is sampled from the exact same arc-length geometry used by
+    // navigation, targeting, collision, and wave spawning. Overlap hides seams
+    // while tangent rotation lets one painted tile follow arbitrary curves.
+    const occupied = new Set<string>();
+    for (const routeId of geometry.routeIds()) {
+      const length = geometry.length(routeId);
+      const count = Math.max(2, Math.ceil(length / visual.road.stampSpacing));
+      const roadHeight = geometry.halfWidth(routeId) * 2 + visual.road.shoulder * 2;
+      for (let index = 0; index <= count; index += 1) {
+        const progress = index / count;
+        const frame = geometry.frame(progress, routeId);
+        const angle = Math.atan2(frame.tangent.y, frame.tangent.x);
+        const key = `${Math.round(frame.x / 5)}:${Math.round(frame.y / 5)}:${Math.round(angle * 8)}`;
+        if (occupied.has(key)) continue;
+        occupied.add(key);
+        this.add.image(frame.x, frame.y, visual.road.assetKey)
+          .setDisplaySize(visual.road.stampLength, roadHeight)
+          .setRotation(angle)
+          .setDepth(0.5)
+          .setName(`painted-road-${routeId}-${index}`);
+      }
+    }
+
+    for (const pad of map.buildPads) {
+      const diameter = pad.radius * 2 * (visual.foundation.diameterScale ?? 1.45);
+      this.add.image(pad.x, pad.y, visual.foundation.assetKey)
+        .setDisplaySize(diameter, diameter)
+        .setDepth(0.72)
+        .setName(`painted-foundation-${pad.id}`);
+    }
+
+    for (const [index, placement] of (visual.foreground?.placements ?? []).entries()) {
+      const image = this.add.image(placement.x, placement.y, visual.foreground!.assetKey)
+        .setOrigin(0.5, 0.78)
+        .setScale(placement.scale ?? 1)
+        .setRotation(placement.rotation ?? 0)
+        .setFlipX(placement.flipX ?? false)
+        .setDepth(placement.depth ?? 72 + placement.y * 0.02)
+        .setName(`painted-foreground-${index}`);
+      image.disableInteractive();
+    }
   }
 
   private createProceduralMap(visual: ProceduralMapVisual): void {

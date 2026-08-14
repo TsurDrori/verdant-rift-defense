@@ -174,7 +174,7 @@ export class GameUI {
         <section class="hero-dock" data-hero-dock></section>
         <section class="cast-command panel" data-cast-command role="status" aria-live="assertive" aria-hidden="true">
           <span class="cast-command-sigil" data-cast-glyph>✦</span>
-          <span><small data-cast-hero>HERO SPELL</small><b data-cast-name>Choose a target</b><em>Tap the battlefield • Esc or right-click cancels</em></span>
+          <span><small data-cast-hero>HERO SPELL</small><b data-cast-name>Choose a target</b><em data-cast-instruction>Tap the battlefield • Esc or right-click cancels</em></span>
           <button data-action="cancel-cast" aria-label="Cancel spell targeting">×</button>
         </section>
         <div class="cast-reticle" data-cast-reticle aria-hidden="true"><i></i><b></b><span data-cast-validity></span></div>
@@ -428,13 +428,15 @@ export class GameUI {
     command.classList.toggle('is-visible', Boolean(armed));
     command.setAttribute('aria-hidden', armed ? 'false' : 'true');
     if (!armed) {
-      reticle.classList.remove('is-visible', 'is-valid', 'is-invalid', 'is-rejected');
+      reticle.classList.remove('is-visible', 'is-valid', 'is-invalid', 'is-approachable', 'is-queued', 'is-rejected');
       return;
     }
     const hero = this.controller.snapshot().heroes.find((candidate) => candidate.id === armed.heroId);
     const spell = heroSpellSpec(armed.spellId);
-    this.setText('[data-cast-hero]', `${hero?.name.split(' • ')[0] ?? armed.heroId} • SPELL TARGETING`);
+    const queued = this.controller.queuedSpellCast;
+    this.setText('[data-cast-hero]', `${hero?.name.split(' • ')[0] ?? armed.heroId} • ${queued ? 'MOVING TO CAST' : 'SPELL TARGETING'}`);
     this.setText('[data-cast-name]', spell.name);
+    this.setText('[data-cast-instruction]', queued ? 'Approaching target • Tap elsewhere to retarget • Cancel stops' : 'Tap the battlefield • Esc or right-click cancels');
     const castGlyph = this.root.querySelector<HTMLElement>('[data-cast-glyph]');
     if (castGlyph && castGlyph.dataset.icon !== armed.spellId) {
       castGlyph.dataset.icon = armed.spellId;
@@ -448,8 +450,10 @@ export class GameUI {
     const hasPoint = Boolean(preview.point);
     reticle.classList.toggle('is-visible', hasPoint);
     reticle.classList.toggle('is-valid', preview.valid === true);
-    reticle.classList.toggle('is-invalid', preview.valid === false);
-    if (hasPoint) this.setText('[data-cast-validity]', preview.valid ? 'CAST' : 'OUT OF RANGE');
+    reticle.classList.toggle('is-approachable', preview.approachable === true);
+    reticle.classList.toggle('is-queued', preview.queued === true);
+    reticle.classList.toggle('is-invalid', preview.valid === false && preview.approachable !== true);
+    if (hasPoint) this.setText('[data-cast-validity]', preview.valid ? 'CAST' : preview.approachable ? preview.queued ? 'APPROACHING' : 'MOVE + CAST' : 'UNREACHABLE');
   }
 
   private positionCastReticle(clientX: number, clientY: number): void {

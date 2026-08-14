@@ -26,7 +26,7 @@ pnpm content:sync
 pnpm dev
 ```
 
-Open `http://localhost:4173/?stage=my-stage&debugMap=1` to preview a playable package and its authoritative route overlay. The content pipeline supports painted and deterministic procedural maps, multiple routes, route-specific waves, stage economy, objectives, hero spawns, and stage-scoped assets without a GUI map editor. See [`docs/MAP_AUTHORING.md`](./docs/MAP_AUTHORING.md).
+Open `http://localhost:4173/?stage=my-stage&debugMap=1` to preview a playable package and its authoritative route overlay. The content pipeline supports geometry-assembled painted maps (scenery + reusable painted roads/foundations/foreground), monolithic paintings, and deterministic procedural maps without a GUI editor. See [`docs/MAP_AUTHORING.md`](./docs/MAP_AUTHORING.md).
 
 ## Controls
 
@@ -41,7 +41,7 @@ Open `http://localhost:4173/?stage=my-stage&debugMap=1` to preview a playable pa
 
 ## Included
 
-- Two playable data-driven stages: a 12-wave painted map and a 10-wave procedural multi-route map
+- Two playable data-driven stages: a 12-wave layered-painted map and a 10-wave procedural multi-route map
 - Five enemy archetypes, three difficulties, proportional star scoring
 - Four tower families with three ranks and two mechanically distinct final branches each
 - Armor/resistance, flying coverage, burn, slow, mark, expose, splash, chain, aura, and targeting priorities

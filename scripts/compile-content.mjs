@@ -52,6 +52,22 @@ const routeProjection = (point, route) => {
 };
 const json = async (path) => JSON.parse(await readFile(path, 'utf8'));
 
+async function validateLayerAsset(asset, source, label, expectedSize) {
+  if (!/^[a-z][a-z0-9.-]+$/.test(asset?.assetKey ?? '')) fail(source, `${label}.assetKey must be a stable dotted key.`);
+  if (!/^assets\/[a-z0-9./-]+\.png$/i.test(asset?.assetPath ?? '') || asset.assetPath.includes('..')) fail(source, `${label}.assetPath must be a PNG below public/assets/.`);
+  try {
+    const image = await readFile(resolve(project, 'public', asset.assetPath));
+    if (image.subarray(1, 4).toString() !== 'PNG') fail(source, `${label} must be a PNG.`);
+    const width = image.readUInt32BE(16);
+    const height = image.readUInt32BE(20);
+    if (expectedSize && (width !== expectedSize.width || height !== expectedSize.height)) fail(source, `${label} is ${width}×${height}; expected ${expectedSize.width}×${expectedSize.height}.`);
+    if (!expectedSize && (width < 64 || height < 64 || width > 2048 || height > 2048)) fail(source, `${label} dimensions ${width}×${height} are outside the 64..2048 tile budget.`);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith(source)) throw error;
+    fail(source, `${label} asset '${asset?.assetPath}' does not exist in public/.`);
+  }
+}
+
 function validateCampaign(stage, source) {
   const campaign = stage.campaign;
   if (stage.schemaVersion !== 1) fail(source, 'schemaVersion must be 1.');
@@ -157,13 +173,33 @@ async function validateMap(map, source) {
       if (comparison.pads.recall < thresholds.minPadRecall) fail(source, `semantic pad recall ${(comparison.pads.recall * 100).toFixed(2)}% is below ${(thresholds.minPadRecall * 100).toFixed(2)}%.`);
       if (comparison.pads.precision < thresholds.minPadPrecision) fail(source, `semantic pad precision ${(comparison.pads.precision * 100).toFixed(2)}% is below ${(thresholds.minPadPrecision * 100).toFixed(2)}%.`);
     } else if (map.visual.semanticMask) fail(source, 'visual.semanticMask requires visual.semanticMaskPath.');
+  } else if (map.visual?.kind === 'layered-painted') {
+    await validateLayerAsset(map.visual.terrain, source, 'visual.terrain', map.world);
+    await validateLayerAsset(map.visual.road, source, 'visual.road');
+    await validateLayerAsset(map.visual.foundation, source, 'visual.foundation');
+    if (![map.visual.road.stampLength, map.visual.road.stampSpacing, map.visual.road.shoulder].every(finite)) fail(source, 'layered-painted road metrics must be finite numbers.');
+    if (map.visual.road.stampLength < 64 || map.visual.road.stampLength > 240) fail(source, 'visual.road.stampLength must be 64..240.');
+    if (map.visual.road.stampSpacing < 16 || map.visual.road.stampSpacing > map.visual.road.stampLength * .8) fail(source, 'visual.road.stampSpacing must overlap the brush and remain within 16..80% of stampLength.');
+    if (map.visual.road.shoulder < 0 || map.visual.road.shoulder > 30) fail(source, 'visual.road.shoulder must be 0..30.');
+    if (map.visual.foundation.diameterScale !== undefined && (!finite(map.visual.foundation.diameterScale) || map.visual.foundation.diameterScale < 1 || map.visual.foundation.diameterScale > 2.4)) fail(source, 'visual.foundation.diameterScale must be 1..2.4.');
+    if (map.visual.foreground) {
+      await validateLayerAsset(map.visual.foreground, source, 'visual.foreground');
+      if (!Array.isArray(map.visual.foreground.placements)) fail(source, 'visual.foreground.placements must be an array.');
+      for (const [index, placement] of map.visual.foreground.placements.entries()) {
+        if (![placement.x, placement.y].every(finite)) fail(source, `visual.foreground placement ${index} requires x/y.`);
+        if (placement.x < -200 || placement.x > map.world.width + 200 || placement.y < -200 || placement.y > map.world.height + 200) fail(source, `visual.foreground placement ${index} exceeds the authoring margin.`);
+        if (placement.scale !== undefined && (!finite(placement.scale) || placement.scale < .2 || placement.scale > 2.5)) fail(source, `visual.foreground placement ${index} scale must be .2..2.5.`);
+        if (placement.rotation !== undefined && !finite(placement.rotation)) fail(source, `visual.foreground placement ${index} rotation is invalid.`);
+        if (placement.depth !== undefined && (!finite(placement.depth) || placement.depth < 1 || placement.depth > 120)) fail(source, `visual.foreground placement ${index} depth must be 1..120.`);
+      }
+    }
   } else if (map.visual?.kind === 'procedural') {
     const palette = map.visual.palette;
     if (!Number.isInteger(map.visual.seed) || !finite(map.visual.density) || map.visual.density < 0 || map.visual.density > 1) fail(source, 'procedural visual seed/density is invalid.');
     for (const key of ['ground', 'groundAlt', 'road', 'roadEdge', 'water', 'accent']) if (!/^#[0-9a-f]{6}$/i.test(palette?.[key] ?? '')) fail(source, `procedural palette.${key} must be a six-digit hex color.`);
     if (!Array.isArray(palette?.foliage) || palette.foliage.length < 2 || palette.foliage.some((color) => !/^#[0-9a-f]{6}$/i.test(color))) fail(source, 'procedural palette.foliage requires at least two hex colors.');
     if (!Array.isArray(map.visual.waterBands) || !Array.isArray(map.visual.landmarks)) fail(source, 'procedural visuals require waterBands and landmarks arrays.');
-  } else fail(source, "map.visual.kind must be 'painted' or 'procedural'.");
+  } else fail(source, "map.visual.kind must be 'painted', 'layered-painted', or 'procedural'.");
   return routeIds;
 }
 
@@ -255,7 +291,13 @@ for (const directory of directories) {
   const entrances = map.markers.entrances ?? [{ ...map.markers.entrance, routeId: map.primaryRouteId }];
   const { routeId: _primaryEntranceRoute, ...primaryEntrance } = entrances[0];
   const normalizedMap = { ...map, route: primary, markers: { ...map.markers, entrances, entrance: primaryEntrance } };
-  const images = map.visual.kind === 'painted' ? [{ key: map.visual.assetKey, path: map.visual.assetPath }] : [];
+  const images = map.visual.kind === 'painted'
+    ? [{ key: map.visual.assetKey, path: map.visual.assetPath }]
+    : map.visual.kind === 'layered-painted'
+      ? [map.visual.terrain, map.visual.road, map.visual.foundation, map.visual.foreground]
+        .filter(Boolean)
+        .map((asset) => ({ key: asset.assetKey, path: asset.assetPath }))
+      : [];
   entries.push({
     ...stage.campaign,
     run: {
