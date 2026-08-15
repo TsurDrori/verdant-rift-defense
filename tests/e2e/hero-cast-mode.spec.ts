@@ -24,7 +24,7 @@ async function clickWorld(page: Page, x: number, y: number, button: 'left' | 'ri
   await page.mouse.click(box.x + box.width * (x / 1600), box.y + box.height * (y / 900), { button });
 }
 
-test('armed hero spell owns the world pointer instead of selecting an underlying foundation', async ({ page }) => {
+test('an approachable spell target owns the world pointer instead of selecting its foundation', async ({ page }) => {
   await enterBattle(page);
   await expandHero(page, 'Kael');
   await page.getByRole('button', { name: /Cast Rift Quake.*Kael/ }).click();
@@ -35,14 +35,17 @@ test('armed hero spell owns the world pointer instead of selecting an underlying
   const canvas = await page.locator('canvas').boundingBox();
   if (!canvas) throw new Error('Battlefield canvas did not receive a layout box.');
   await page.mouse.move(canvas.x + canvas.width * (FIRST_PAD.x / 1600), canvas.y + canvas.height * (FIRST_PAD.y / 900));
-  await expect(page.locator('[data-cast-reticle]')).toHaveClass(/is-invalid/);
-  await page.screenshot({ path: 'test-results/cast-mode/armed-invalid-desktop.png' });
+  await expect(page.locator('[data-cast-reticle]')).toHaveClass(/is-approachable/);
+  await expect(page.locator('[data-cast-validity]')).toHaveText('MOVE + CAST');
+  await page.screenshot({ path: 'test-results/cast-mode/armed-approachable-desktop.png' });
   await clickWorld(page, FIRST_PAD.x, FIRST_PAD.y);
 
   await expect.poll(() => page.evaluate(() => ({
     armedAbility: window.__VERDANT_RIFT__!.armedAbility,
+    queuedSpell: window.__VERDANT_RIFT__!.queuedSpellCast?.spellId,
     selection: window.__VERDANT_RIFT__!.selection,
-  }))).toEqual({ armedAbility: 'kael', selection: { kind: 'hero', heroId: 'kael' } });
+  }))).toEqual({ armedAbility: 'kael', queuedSpell: 'rift-quake', selection: { kind: 'hero', heroId: 'kael' } });
+  await expect(page.locator('[data-cast-command]')).toContainText('MOVING TO CAST');
   await expect(page.getByRole('heading', { name: 'Choose a covenant' })).toHaveCount(0);
 });
 
